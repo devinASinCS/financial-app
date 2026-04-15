@@ -19,7 +19,12 @@
   }
 
   function navigate(page) {
+    // Update desktop sidebar links
     document.querySelectorAll('.nav-link').forEach(a => {
+      a.classList.toggle('active', a.dataset.page === page);
+    });
+    // Update mobile top nav items
+    document.querySelectorAll('.mobile-nav-item').forEach(a => {
       a.classList.toggle('active', a.dataset.page === page);
     });
 
@@ -36,12 +41,13 @@
 
   // ── Sidebar date ────────────────────────────────────────────────
   function updateSidebarDate() {
-    const el = document.getElementById('sidebar-date');
-    if (!el) return;
     const d = new Date();
-    el.textContent = d.toLocaleDateString('zh-TW', {
-      year: 'numeric', month: 'long', day: 'numeric'
-    });
+    const full = d.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' });
+    const short = d.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric', weekday: 'short' });
+    const sidebarEl = document.getElementById('sidebar-date');
+    if (sidebarEl) sidebarEl.textContent = full;
+    const mobileEl = document.getElementById('mobile-date');
+    if (mobileEl) mobileEl.textContent = short;
   }
 
   // ── Seed demo data ──────────────────────────────────────────────
