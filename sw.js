@@ -1,7 +1,7 @@
 /**
  * Service Worker — offline caching for PWA
  */
-const CACHE_NAME = 'finance-app-v1';
+const CACHE_NAME = 'finance-app-v2';
 
 // Files to cache for offline use
 const STATIC_ASSETS = [
