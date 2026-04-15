@@ -437,6 +437,52 @@ const Store = (() => {
     return { income, expense, net: income - expense, count: txs.length };
   }
 
+  // ── Export / Import ─────────────────────────────────────────────
+  function exportData() {
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      transactions:  load(KEYS.transactions, []),
+      stockTrades:   load(KEYS.stockTrades, []),
+      dividends:     load(KEYS.dividends, []),
+      banks:         load(KEYS.banks, []),
+      subscriptions: load(KEYS.subscriptions, []),
+      dcaPlans:      load(KEYS.dcaPlans, []),
+      debitLog:      load(KEYS.debitLog, {}),
+    };
+  }
+
+  /**
+   * Import data from a backup object.
+   * Returns { ok: true, counts } on success, { ok: false, error } on failure.
+   */
+  function importData(obj) {
+    try {
+      if (!obj || typeof obj !== 'object') throw new Error('無效的資料格式');
+      // Write each key if present in backup
+      if (Array.isArray(obj.transactions))  save(KEYS.transactions,  obj.transactions);
+      if (Array.isArray(obj.stockTrades))   save(KEYS.stockTrades,   obj.stockTrades);
+      if (Array.isArray(obj.dividends))     save(KEYS.dividends,     obj.dividends);
+      if (Array.isArray(obj.banks))         save(KEYS.banks,         obj.banks);
+      if (Array.isArray(obj.subscriptions)) save(KEYS.subscriptions, obj.subscriptions);
+      if (Array.isArray(obj.dcaPlans))      save(KEYS.dcaPlans,      obj.dcaPlans);
+      if (obj.debitLog && typeof obj.debitLog === 'object') save(KEYS.debitLog, obj.debitLog);
+      return {
+        ok: true,
+        counts: {
+          transactions:  (obj.transactions  || []).length,
+          stockTrades:   (obj.stockTrades   || []).length,
+          dividends:     (obj.dividends     || []).length,
+          banks:         (obj.banks         || []).length,
+          subscriptions: (obj.subscriptions || []).length,
+          dcaPlans:      (obj.dcaPlans      || []).length,
+        }
+      };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
+
   return {
     EXPENSE_CATEGORIES, INCOME_CATEGORIES,
     getTransactions, addTransaction, updateTransaction, deleteTransaction,
@@ -449,5 +495,6 @@ const Store = (() => {
     processAutoDebits, getPendingDebits,
     getHoldings, getRealizedTrades, getPnLTimeline,
     getMonthlySummary,
+    exportData, importData,
   };
 })();

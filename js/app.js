@@ -11,6 +11,7 @@
     'us-stocks':   PageUSStocks,
     banks:         PageBanks,
     subscriptions: PageSubscriptions,
+    settings:      PageSettings,
   };
 
   function getPage() {

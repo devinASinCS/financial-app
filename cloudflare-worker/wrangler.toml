@@ -1,0 +1,7 @@
+name = "finance-notion-sync"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Set these secrets via CLI (never commit actual values):
+#   npx wrangler secret put NOTION_TOKEN
+#   npx wrangler secret put NOTION_PAGE_ID

@@ -19,6 +19,8 @@ const STATIC_ASSETS = [
   '/js/pages/subscriptions.js',
   '/js/pages/tw-stocks.js',
   '/js/pages/us-stocks.js',
+  '/js/components/notion-sync.js',
+  '/js/pages/settings.js',
 ];
 
 // External CDN resources

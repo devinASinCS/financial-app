@@ -308,6 +308,53 @@
   box-sizing: border-box;
 }
 
+/* ── Section title ──────────────────────────────────────────────── */
+.section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 4px;
+}
+
+/* ── Spacing utilities ──────────────────────────────────────────── */
+.mb-6 { margin-bottom: 24px; }
+.mb-4 { margin-bottom: 16px; }
+
+/* ── Mini stat (settings page) ──────────────────────────────────── */
+.stat-mini {
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+.stat-mini-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.2;
+}
+.stat-mini-lbl {
+  font-size: 11px;
+  color: #6B7280;
+  margin-top: 4px;
+}
+
+/* ── btn-* standalone (same as .btn but self-contained) ─────────── */
+.btn-primary, .btn-secondary, .btn-danger, .btn-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
 /* ── Category pill ──────────────────────────────────────────────── */
 .category-pill {
   display: inline-block;
