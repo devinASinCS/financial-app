@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<!-- Open this file in a browser to generate PNG icons. Right-click → Save image as icon-192.png / icon-512.png -->
+<html>
+<head><title>Icon Generator</title></head>
+<body style="background:#111;display:flex;gap:20px;padding:20px;flex-wrap:wrap;">
+<script>
+  function makeIcon(size) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    // Background
+    ctx.fillStyle = '#111827';
+    ctx.roundRect(0, 0, size, size, size * 0.2);
+    ctx.fill();
+    // Emoji
+    ctx.font = `${size * 0.55}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('💰', size / 2, size / 2);
+    return canvas;
+  }
+
+  [192, 512].forEach(size => {
+    const canvas = makeIcon(size);
+    canvas.style.border = '2px solid #333';
+    canvas.title = `icon-${size}.png — right-click → Save as`;
+    document.body.appendChild(canvas);
+    const label = document.createElement('p');
+    label.style.color = '#fff'; label.style.fontSize = '12px';
+    label.textContent = `icon-${size}.png`;
+    document.body.appendChild(label);
+  });
+</script>
+</body>
+</html>

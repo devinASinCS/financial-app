@@ -6,6 +6,8 @@ const PageUSStocks = (() => {
   let _activeTab = 'holdings';
 
   function render() {
+    const pendingDca = Store.getPendingDcaPlans(MARKET);
+
     document.getElementById('app-content').innerHTML = `
       <div class="page-header">
         <div>
@@ -15,6 +17,19 @@ const PageUSStocks = (() => {
         <div style="display:flex;gap:8px;" id="us-action-btns"></div>
       </div>
 
+      ${pendingDca.length > 0 ? `
+        <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+          <span style="font-size:18px;">🔔</span>
+          <div style="flex:1;">
+            <strong style="color:#1D4ED8;">定期定額待執行</strong>
+            <div style="font-size:13px;color:#1E40AF;margin-top:2px;">
+              ${pendingDca.map(p => `${p.symbol} ${p.name}（$${p.monthlyAmount}/月）`).join('、')}
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="PageUSStocks.switchTab('dca')">前往執行</button>
+        </div>
+      ` : ''}
+
       <!-- Summary Cards -->
       <div class="grid-4" style="margin-bottom:20px;" id="us-summary-cards"></div>
 
@@ -23,6 +38,9 @@ const PageUSStocks = (() => {
         <button class="tab-btn ${_activeTab==='holdings'?'active':''}" onclick="PageUSStocks.switchTab('holdings')">📋 持股</button>
         <button class="tab-btn ${_activeTab==='trades'?'active':''}" onclick="PageUSStocks.switchTab('trades')">🔄 交易紀錄</button>
         <button class="tab-btn ${_activeTab==='dividends'?'active':''}" onclick="PageUSStocks.switchTab('dividends')">💵 股利</button>
+        <button class="tab-btn ${_activeTab==='dca'?'active':''}" onclick="PageUSStocks.switchTab('dca')">
+          📅 定期定額${pendingDca.length > 0 ? ` <span style="background:#EF4444;color:white;border-radius:10px;padding:1px 6px;font-size:10px;">${pendingDca.length}</span>` : ''}
+        </button>
         <button class="tab-btn ${_activeTab==='pnl'?'active':''}" onclick="PageUSStocks.switchTab('pnl')">📈 損益走勢</button>
       </div>
 
@@ -75,6 +93,7 @@ const PageUSStocks = (() => {
       trades:    `<button class="btn btn-secondary" onclick="PageUSStocks.openImport()">📥 匯入對帳單</button>
                   <button class="btn btn-primary" onclick="PageUSStocks.openAddTrade()">＋ 新增交易</button>`,
       dividends: `<button class="btn btn-primary" onclick="PageUSStocks.openAddDividend()">＋ 新增股利</button>`,
+      dca:       `<button class="btn btn-primary" onclick="PageUSStocks.openAddDca()">＋ 新增定期定額</button>`,
       pnl:       '',
     };
     document.getElementById('us-action-btns').innerHTML = btns[_activeTab] || '';
@@ -83,7 +102,7 @@ const PageUSStocks = (() => {
   function switchTab(tab) {
     _activeTab = tab;
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    event.target.classList.add('active');
+    if (event?.target) event.target.classList.add('active');
     _renderActionBtns();
     _renderTab();
   }
@@ -93,6 +112,7 @@ const PageUSStocks = (() => {
       case 'holdings':  _renderHoldings(); break;
       case 'trades':    _renderTrades(); break;
       case 'dividends': _renderDividends(); break;
+      case 'dca':       _renderDca(); break;
       case 'pnl':       _renderPnL(); break;
     }
   }
@@ -143,6 +163,7 @@ const PageUSStocks = (() => {
                     <td class="text-right ${Utils.pnlClass(rlz)}">${Utils.formatUSD(rlz, true)}</td>
                     <td class="text-center">
                       <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openAddTrade('${h.symbol}','${h.name}')">交易</button>
+                      <button class="btn btn-secondary btn-sm" style="margin-left:4px;color:#8B5CF6;" onclick="PageUSStocks.openAddDividendFor('${h.symbol}')">股利</button>
                     </td>
                   </tr>
                 `;
@@ -179,6 +200,7 @@ const PageUSStocks = (() => {
               <th>代號</th>
               <th>名稱</th>
               <th class="text-center">買賣</th>
+              <th style="font-size:11px;color:#9CA3AF;">來源</th>
               <th class="text-right">股數</th>
               <th class="text-right">價格</th>
               <th class="text-right">手續費</th>
@@ -189,9 +211,7 @@ const PageUSStocks = (() => {
           <tbody>
             ${trades.map(t => {
               const gross = t.quantity * t.price;
-              const net = t.action === 'buy'
-                ? gross + (t.fee||0)
-                : gross - (t.fee||0);
+              const net = t.action === 'buy' ? gross + (t.fee||0) : gross - (t.fee||0);
               return `
                 <tr>
                   <td>${Utils.formatDate(t.date)}</td>
@@ -202,6 +222,7 @@ const PageUSStocks = (() => {
                       ${t.action==='buy'?'Buy':'Sell'}
                     </span>
                   </td>
+                  <td style="font-size:11px;color:#9CA3AF;">${t.source === 'dca' ? '📅DCA' : '手動'}</td>
                   <td class="text-right">${Utils.formatShares(t.quantity)}</td>
                   <td class="text-right">${Utils.formatUSD(t.price)}</td>
                   <td class="text-right" style="color:#9CA3AF;">${Utils.formatUSD(t.fee||0)}</td>
@@ -224,12 +245,19 @@ const PageUSStocks = (() => {
   // ── Dividends ───────────────────────────────────────────────────
   function _renderDividends() {
     const divs = Store.getDividends(MARKET).slice().reverse();
+    const holdings = Store.getHoldings(MARKET);
     const container = document.getElementById('us-tab-content');
 
     container.innerHTML = `
       <div class="card" style="overflow-x:auto;">
         ${divs.length === 0
-          ? `<div class="empty-state"><div class="empty-state-icon">💵</div><div class="empty-state-text">尚無股利紀錄</div></div>`
+          ? `<div class="empty-state">
+               <div class="empty-state-icon">💵</div>
+               <div class="empty-state-text">尚無股利紀錄</div>
+               ${holdings.length > 0
+                 ? `<button class="btn btn-primary" style="margin-top:12px;" onclick="PageUSStocks.openAddDividend()">＋ 新增股利</button>`
+                 : ''}
+             </div>`
           : `<table class="data-table">
               <thead>
                 <tr>
@@ -266,6 +294,85 @@ const PageUSStocks = (() => {
     `;
   }
 
+  // ── DCA Tab ─────────────────────────────────────────────────────
+  function _renderDca() {
+    const plans = Store.getDcaPlans(MARKET);
+    const pending = Store.getPendingDcaPlans(MARKET);
+    const pendingIds = new Set(pending.map(p => p.id));
+    const container = document.getElementById('us-tab-content');
+
+    if (plans.length === 0) {
+      container.innerHTML = `
+        <div class="card">
+          <div class="empty-state">
+            <div class="empty-state-icon">📅</div>
+            <div class="empty-state-text">尚未設定定期定額計畫</div>
+            <p style="font-size:13px;color:#6B7280;max-width:360px;text-align:center;margin:8px auto 0;">
+              設定後，系統會在每月執行日提醒你，並根據你輸入的成交價格自動計算股數。
+            </p>
+            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageUSStocks.openAddDca()">＋ 新增定期定額</button>
+          </div>
+        </div>`;
+      return;
+    }
+
+    const today = new Date();
+    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+
+    container.innerHTML = `
+      <div class="card">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>股票</th>
+              <th class="text-right">每月投入</th>
+              <th>執行日</th>
+              <th>本月狀態</th>
+              <th class="text-center">啟用</th>
+              <th class="text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${plans.map(p => {
+              const isDue = pendingIds.has(p.id);
+              const isDone = p.lastExecutedMonth === currentMonthKey;
+              return `
+                <tr>
+                  <td>
+                    <div style="font-weight:600;color:#1D4ED8;">${p.symbol}</div>
+                    <div style="font-size:12px;color:#6B7280;">${p.name}</div>
+                  </td>
+                  <td class="text-right" style="font-weight:600;">$${Utils.formatNumber(p.monthlyAmount, 2)}</td>
+                  <td>每月 ${p.executionDay} 日</td>
+                  <td>
+                    ${!p.active
+                      ? '<span style="color:#9CA3AF;font-size:12px;">已停用</span>'
+                      : isDone
+                        ? '<span style="color:#10B981;font-size:12px;">✓ 本月已執行</span>'
+                        : isDue
+                          ? '<span style="color:#F59E0B;font-size:12px;font-weight:600;">⚡ 待執行</span>'
+                          : `<span style="color:#9CA3AF;font-size:12px;">${p.executionDay} 日執行</span>`
+                    }
+                  </td>
+                  <td class="text-center">
+                    <input type="checkbox" ${p.active ? 'checked' : ''}
+                      onchange="PageUSStocks.toggleDca('${p.id}', this.checked)"
+                      style="width:15px;height:15px;cursor:pointer;">
+                  </td>
+                  <td class="text-center">
+                    ${isDue ? `<button class="btn btn-primary btn-sm" onclick="PageUSStocks.executeDca('${p.id}')" style="margin-right:4px;">執行</button>` : ''}
+                    <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openEditDca('${p.id}')">編輯</button>
+                    <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="PageUSStocks.delDca('${p.id}')">刪除</button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   // ── P&L ─────────────────────────────────────────────────────────
   function _renderPnL() {
     const timeline  = Store.getPnLTimeline(MARKET);
@@ -286,9 +393,7 @@ const PageUSStocks = (() => {
           <table class="data-table">
             <thead>
               <tr>
-                <th>賣出日期</th>
-                <th>代號</th>
-                <th>名稱</th>
+                <th>賣出日期</th><th>代號</th><th>名稱</th>
                 <th class="text-right">股數</th>
                 <th class="text-right">平均成本</th>
                 <th class="text-right">賣出價格</th>
@@ -342,6 +447,15 @@ const PageUSStocks = (() => {
     Modal.openDividend(MARKET, null, _refresh, holdings);
   }
 
+  function openAddDividendFor(symbol) {
+    const holdings = Store.getHoldings(MARKET);
+    const holding = holdings.find(h => h.symbol === symbol);
+    const pre = holding
+      ? { symbol: holding.symbol, name: holding.name, holdingQuantity: holding.quantity, market: MARKET }
+      : { symbol, market: MARKET };
+    Modal.openDividend(MARKET, pre, _refresh, holdings);
+  }
+
   function openEditDividend(id) {
     const d = Store.getDividends(MARKET).find(d => d.id === id);
     if (d) {
@@ -361,15 +475,43 @@ const PageUSStocks = (() => {
     Modal.openImport(MARKET, _refresh);
   }
 
+  // DCA actions
+  function openAddDca() {
+    Modal.openDcaPlan(MARKET, null, _refresh);
+  }
+
+  function openEditDca(id) {
+    const plan = Store.getDcaPlans().find(p => p.id === id);
+    if (plan) Modal.openDcaPlan(MARKET, plan, _refresh);
+  }
+
+  function delDca(id) {
+    if (!Utils.confirm('確定刪除此定期定額計畫？')) return;
+    Store.deleteDcaPlan(id);
+    Utils.showToast('已刪除');
+    _refresh();
+  }
+
+  function toggleDca(id, active) {
+    Store.updateDcaPlan(id, { active });
+    Utils.showToast(active ? '已啟用' : '已停用');
+    _renderDca();
+  }
+
+  function executeDca(id) {
+    const plan = Store.getDcaPlans().find(p => p.id === id);
+    if (plan) Modal.openDcaExecute(plan, _refresh);
+  }
+
   function _refresh() {
-    _renderSummary();
-    _renderTab();
+    render();
   }
 
   return {
     render, switchTab,
     openAddTrade, openEditTrade, delTrade,
-    openAddDividend, openEditDividend, delDividend,
+    openAddDividend, openAddDividendFor, openEditDividend, delDividend,
     openImport,
+    openAddDca, openEditDca, delDca, toggleDca, executeDca,
   };
 })();

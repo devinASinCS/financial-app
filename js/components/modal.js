@@ -369,12 +369,17 @@ const Modal = (() => {
       holdingQuantity: '', note: '', market
     };
 
+    // If pre-filled with a specific holding, auto-select it
+    const preHolding = holdings.find(h => h.symbol === d.symbol);
     const holdingOptions = holdings.map(h =>
       `<option value="${h.symbol}" data-qty="${h.quantity}" data-name="${h.name}"
         ${d.symbol === h.symbol ? 'selected' : ''}>
         ${h.symbol} ${h.name} (${Utils.formatShares(h.quantity)}股)
        </option>`
     ).join('');
+
+    // Pre-fill holding quantity from current holdings if not editing
+    const preQty = d.holdingQuantity || (preHolding ? preHolding.quantity : '');
 
     open(`
       <div class="modal-header">
@@ -394,8 +399,11 @@ const Modal = (() => {
                 <option value="">手動輸入</option>
                 ${holdingOptions}
               </select>
+              <div style="font-size:11px;color:#9CA3AF;margin-top:3px;">選擇持股後自動帶入股數</div>
             ` : ''}
-            <input type="text" id="div-symbol" class="form-input" style="margin-top:${holdings.length > 0 ? '6px' : '0'}" placeholder="${isTW ? '股票代號' : '代碼'}" value="${d.symbol}">
+            <input type="text" id="div-symbol" class="form-input" style="margin-top:${holdings.length > 0 ? '6px' : '0'}"
+              placeholder="${isTW ? '股票代號' : '代碼'}" value="${d.symbol}"
+              oninput="Modal._onDivSymbolInput('${market}')">
           </div>
         </div>
         <div class="grid-2">
@@ -404,8 +412,11 @@ const Modal = (() => {
             <input type="text" id="div-name" class="form-input" placeholder="${isTW ? '例：台積電' : '例：AAPL'}" value="${d.name}">
           </div>
           <div class="form-group">
-            <label class="form-label">持有股數</label>
-            <input type="number" id="div-holding" class="form-input" placeholder="0" value="${d.holdingQuantity || ''}" oninput="Modal._calcDiv()">
+            <label class="form-label">
+              持有股數
+              ${holdings.length > 0 ? `<span style="font-size:11px;color:#9CA3AF;font-weight:400;">（從持股自動帶入）</span>` : ''}
+            </label>
+            <input type="number" id="div-holding" class="form-input" placeholder="0" value="${preQty}" oninput="Modal._calcDiv()">
           </div>
         </div>
         <div class="grid-2">
@@ -446,6 +457,22 @@ const Modal = (() => {
     if (sym) sym.value = opt.value;
     if (name) name.value = opt.dataset.name || '';
     if (holding) { holding.value = opt.dataset.qty || ''; Modal._calcDiv(); }
+  }
+
+  function _onDivSymbolInput(market) {
+    const symbol = document.getElementById('div-symbol')?.value.trim().toUpperCase();
+    if (!symbol || symbol.length < 2) return;
+    const holdings = Store.getHoldings(market);
+    const match = holdings.find(h => h.symbol === symbol);
+    if (match) {
+      const nameEl = document.getElementById('div-name');
+      const holdingEl = document.getElementById('div-holding');
+      if (nameEl && !nameEl.value) nameEl.value = match.name;
+      if (holdingEl && !holdingEl.value) {
+        holdingEl.value = match.quantity;
+        Modal._calcDiv();
+      }
+    }
   }
 
   function _calcDiv() {
@@ -789,15 +816,249 @@ const Modal = (() => {
     close();
   }
 
+  // ── DCA Plan Modal ──────────────────────────────────────────────
+  function openDcaPlan(market, existing = null, onSave) {
+    const isEdit = !!existing;
+    const isTW = market === 'TW';
+    const p = existing || {
+      symbol: '', name: '', monthlyAmount: '', executionDay: 1,
+      active: true, note: '', bankId: '', cardId: '',
+    };
+
+    const banks = Store.getBanks();
+    const bankOptions = banks.map(b =>
+      `<option value="${b.id}" ${p.bankId === b.id ? 'selected' : ''}>${b.name}</option>`
+    ).join('');
+    const selectedBank = banks.find(b => b.id === p.bankId);
+    const cardOptions = selectedBank
+      ? selectedBank.creditCards.map(c =>
+          `<option value="${c.id}" ${p.cardId === c.id ? 'selected' : ''}>${c.name}</option>`
+        ).join('')
+      : '';
+
+    open(`
+      <div class="modal-header">
+        <span class="modal-title">${isEdit ? '編輯' : '新增'}定期定額 — ${isTW ? '台股' : '美股'}</span>
+        <button class="modal-close" onclick="Modal.close()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">${isTW ? '股票代號' : '股票代碼'}</label>
+            <input type="text" id="dca-symbol" class="form-input"
+              placeholder="${isTW ? '例：0050' : '例：VTI'}"
+              value="${p.symbol}" style="text-transform:uppercase"
+              oninput="Modal._onDcaSymbolInput('${market}')">
+          </div>
+          <div class="form-group">
+            <label class="form-label">股票名稱</label>
+            <input type="text" id="dca-name" class="form-input"
+              placeholder="${isTW ? '例：元大台灣50' : '例：Vanguard Total'}"
+              value="${p.name}">
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">每月投入金額 (${isTW ? 'NT$' : '$'})</label>
+            <input type="number" id="dca-amount" class="form-input"
+              placeholder="${isTW ? '5000' : '100'}"
+              value="${p.monthlyAmount || ''}" min="1" step="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">每月執行日</label>
+            <input type="number" id="dca-day" class="form-input"
+              placeholder="1" value="${p.executionDay || 1}" min="1" max="28">
+            <div style="font-size:11px;color:#9CA3AF;margin-top:3px;">建議 1–28，避免月底問題</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">扣款銀行（選填）</label>
+          <select id="dca-bank" class="form-select" onchange="Modal._onDcaBankChange()">
+            <option value="">不指定</option>
+            ${bankOptions}
+          </select>
+        </div>
+        <div id="dca-card-group" class="form-group" style="display:${cardOptions ? '' : 'none'};">
+          <label class="form-label">扣款信用卡（選填）</label>
+          <select id="dca-card" class="form-select">
+            <option value="">不指定</option>
+            ${cardOptions}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">備註</label>
+          <input type="text" id="dca-note" class="form-input" placeholder="備註..." value="${p.note || ''}">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-primary" onclick="Modal._saveDcaPlan('${market}', ${isEdit ? `'${p.id}'` : 'null'})">
+          ${isEdit ? '儲存' : '新增'}
+        </button>
+      </div>
+    `, onSave);
+  }
+
+  function _onDcaSymbolInput(market) {
+    const symbol = document.getElementById('dca-symbol')?.value.trim().toUpperCase();
+    if (!symbol) return;
+    // Auto-fill name from existing holdings
+    const holdings = Store.getHoldings(market);
+    const match = holdings.find(h => h.symbol === symbol);
+    if (match) {
+      const nameEl = document.getElementById('dca-name');
+      if (nameEl && !nameEl.value) nameEl.value = match.name;
+    }
+  }
+
+  function _onDcaBankChange() {
+    const bankId = document.getElementById('dca-bank')?.value;
+    const cardGrp = document.getElementById('dca-card-group');
+    const cardSel = document.getElementById('dca-card');
+    if (!cardGrp || !cardSel) return;
+    if (bankId) {
+      const bank = Store.getBanks().find(b => b.id === bankId);
+      const cards = bank?.creditCards || [];
+      cardSel.innerHTML = `<option value="">不指定</option>` +
+        cards.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      cardGrp.style.display = cards.length > 0 ? '' : 'none';
+    } else {
+      cardGrp.style.display = 'none';
+    }
+  }
+
+  function _saveDcaPlan(market, existingId) {
+    const symbol      = document.getElementById('dca-symbol').value.trim().toUpperCase();
+    const name        = document.getElementById('dca-name').value.trim();
+    const monthlyAmount = parseFloat(document.getElementById('dca-amount').value || 0);
+    const executionDay  = parseInt(document.getElementById('dca-day').value || 1);
+    const bankId      = document.getElementById('dca-bank').value || null;
+    const cardId      = document.getElementById('dca-card')?.value || null;
+    const note        = document.getElementById('dca-note').value.trim();
+
+    if (!symbol) { Utils.showToast('請填寫股票代號'); return; }
+    if (!monthlyAmount || monthlyAmount <= 0) { Utils.showToast('請填寫有效投入金額'); return; }
+    if (executionDay < 1 || executionDay > 28) { Utils.showToast('執行日請填 1–28'); return; }
+
+    const data = { market, symbol, name: name || symbol, monthlyAmount, executionDay, bankId, cardId: cardId || null, note };
+    if (existingId) {
+      Store.updateDcaPlan(existingId, data);
+      Utils.showToast('已更新');
+    } else {
+      Store.addDcaPlan(data);
+      Utils.showToast('已新增');
+    }
+    close();
+  }
+
+  // ── DCA Execute Modal ───────────────────────────────────────────
+  function openDcaExecute(plan, onSave) {
+    const isTW = plan.market === 'TW';
+    const today = Utils.today();
+
+    open(`
+      <div class="modal-header">
+        <span class="modal-title">執行定期定額 — ${plan.symbol} ${plan.name}</span>
+        <button class="modal-close" onclick="Modal.close()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background:#EFF6FF;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#1E40AF;">
+          <strong>每月投入：</strong>${isTW ? Utils.formatTWD(plan.monthlyAmount) : '$' + plan.monthlyAmount}
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">執行日期</label>
+            <input type="date" id="dca-exec-date" class="form-input" value="${today}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">成交價格 (${isTW ? 'NT$' : '$'})</label>
+            <input type="number" id="dca-exec-price" class="form-input"
+              placeholder="輸入今日成交價" min="0.01" step="0.01"
+              oninput="Modal._calcDcaShares('${plan.market}', ${plan.monthlyAmount})">
+          </div>
+        </div>
+        <div id="dca-calc-preview" style="background:#F0FDF4;padding:12px 14px;border-radius:8px;font-size:13px;color:#065F46;display:none;"></div>
+        <div class="form-group" style="margin-top:12px;">
+          <label class="form-label">手續費 (${isTW ? 'NT$' : '$'})</label>
+          <input type="number" id="dca-exec-fee" class="form-input" placeholder="0" value="0" min="0" step="1"
+            oninput="Modal._calcDcaShares('${plan.market}', ${plan.monthlyAmount})">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-primary" onclick="Modal._executeDca('${plan.id}')">確認執行</button>
+      </div>
+    `, onSave);
+  }
+
+  function _calcDcaShares(market, monthlyAmount) {
+    const price = parseFloat(document.getElementById('dca-exec-price')?.value || 0);
+    const fee   = parseFloat(document.getElementById('dca-exec-fee')?.value || 0);
+    const prev  = document.getElementById('dca-calc-preview');
+    if (!prev || !price) { if (prev) prev.style.display = 'none'; return; }
+
+    const isTW = market === 'TW';
+    const available = monthlyAmount - fee;
+    // TW stocks trade in lots of 1000 shares (1 張)
+    const rawShares = available / price;
+    const shares = isTW ? Math.floor(rawShares / 1000) * 1000 : Math.floor(rawShares * 10000) / 10000;
+    const actualCost = shares * price + fee;
+    const remainder = monthlyAmount - actualCost;
+
+    prev.style.display = '';
+    prev.innerHTML = `
+      <strong>計算結果：</strong><br>
+      ${isTW
+        ? `可買 <strong>${shares / 1000} 張（${Utils.formatShares(shares)} 股）</strong>`
+        : `可買 <strong>${shares} 股</strong>`
+      }<br>
+      實際花費：${isTW ? Utils.formatTWD(actualCost) : '$' + actualCost.toFixed(2)}<br>
+      ${remainder > 0 ? `剩餘：${isTW ? Utils.formatTWD(remainder) : '$' + remainder.toFixed(2)}（不足一${isTW ? '張' : '股'}）` : ''}
+    `;
+  }
+
+  function _executeDca(planId) {
+    const plan  = Store.getDcaPlans().find(p => p.id === planId);
+    if (!plan) return;
+
+    const date  = document.getElementById('dca-exec-date').value;
+    const price = parseFloat(document.getElementById('dca-exec-price').value || 0);
+    const fee   = parseFloat(document.getElementById('dca-exec-fee').value || 0);
+
+    if (!date) { Utils.showToast('請選擇日期'); return; }
+    if (!price || price <= 0) { Utils.showToast('請輸入成交價格'); return; }
+
+    const isTW = plan.market === 'TW';
+    const available = plan.monthlyAmount - fee;
+    const rawShares = available / price;
+    const shares = isTW ? Math.floor(rawShares / 1000) * 1000 : Math.floor(rawShares * 10000) / 10000;
+
+    if (shares <= 0) { Utils.showToast('金額不足以購買任何股份'); return; }
+
+    Store.addStockTrade({
+      date, symbol: plan.symbol, name: plan.name,
+      action: 'buy', quantity: shares, price, fee, tax: 0,
+      market: plan.market, source: 'dca',
+    });
+
+    const monthKey = date.slice(0, 7);
+    Store.updateDcaPlan(planId, { lastExecutedMonth: monthKey });
+
+    Utils.showToast(`已執行：買入 ${plan.symbol} ${isTW ? shares/1000 + '張' : shares + '股'}`);
+    close();
+  }
+
   return {
     open, close,
     openTransaction, _onTypeChange, _saveTx,
     _onPaymentChange, _onPaymentBankChange,
     openStockTrade, _updateTradePreview, _saveTrade,
-    openDividend, _onDivStockChange, _calcDiv, _saveDiv,
+    openDividend, _onDivStockChange, _onDivSymbolInput, _calcDiv, _saveDiv,
     openImport, _doImport,
     openBank, _saveBank,
     openCreditCard, _saveCreditCard,
     openSubscription, _onSubBankChange, _saveSubscription,
+    openDcaPlan, _onDcaSymbolInput, _onDcaBankChange, _saveDcaPlan,
+    openDcaExecute, _calcDcaShares, _executeDca,
   };
 })();
