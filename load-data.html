@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>匯入資料工具</title>
+  <style>
+    body { font-family: sans-serif; display:flex; align-items:center; justify-content:center;
+           min-height:100vh; margin:0; background:#F3F4F6; }
+    .card { background:#fff; border-radius:16px; padding:40px; max-width:480px; width:100%;
+            box-shadow:0 4px 24px rgba(0,0,0,.1); text-align:center; }
+    h1 { font-size:22px; margin:0 0 8px; }
+    p  { color:#6B7280; font-size:14px; margin:0 0 28px; line-height:1.6; }
+    .btn { display:inline-block; padding:12px 28px; border-radius:10px; border:none;
+           font-size:15px; font-weight:600; cursor:pointer; }
+    .btn-primary { background:#3B82F6; color:#fff; }
+    .btn-primary:hover { background:#2563EB; }
+    .btn-primary:disabled { background:#93C5FD; cursor:not-allowed; }
+    #status { margin-top:20px; font-size:14px; color:#374151; min-height:24px; }
+    .ok  { color:#059669; font-weight:600; }
+    .err { color:#DC2626; font-weight:600; }
+    .step { color:#6B7280; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>📥 匯入個人資料</h1>
+  <p>
+    點擊下方按鈕後，選取 <strong>import_data.json</strong> 檔案。<br>
+    系統會先清除所有示範資料，再匯入你的實際記錄。<br>
+    <small style="color:#EF4444;">⚠️ 這會覆蓋 App 中所有現有資料，請確認後再操作。</small>
+  </p>
+  <input type="file" id="file-input" accept=".json" style="display:none">
+  <button class="btn btn-primary" id="btn" onclick="document.getElementById('file-input').click()">
+    選擇 import_data.json
+  </button>
+  <div id="status"></div>
+</div>
+
+<script>
+const FM_KEYS = [
+  'fm_transactions','fm_stock_trades','fm_dividends','fm_banks',
+  'fm_subscriptions','fm_debit_log','fm_dca_plans','fm_stock_prices',
+  'fm_tw_upcoming_divs','fm_expense_events','fm_exchange_rates',
+  'fm_notion_worker_url','fm_notion_db_id',
+];
+
+function setStatus(html, cls) {
+  const el = document.getElementById('status');
+  el.innerHTML = `<span class="${cls||''}">${html}</span>`;
+}
+
+document.getElementById('file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const btn = document.getElementById('btn');
+  btn.disabled = true;
+  setStatus('讀取檔案中…', 'step');
+
+  try {
+    const text = await file.text();
+    setStatus('解析 JSON…', 'step');
+    const data = JSON.parse(text);
+
+    // Validate
+    if (!data.transactions || !data.stockTrades) {
+      throw new Error('JSON 格式不正確：缺少 transactions 或 stockTrades 欄位');
+    }
+
+    // Clear all app keys
+    setStatus('清除舊資料…', 'step');
+    FM_KEYS.forEach(k => localStorage.removeItem(k));
+
+    // Write new data
+    setStatus('寫入資料…', 'step');
+    const write = (key, val) => localStorage.setItem(key, JSON.stringify(val));
+
+    write('fm_transactions',  data.transactions  || []);
+    write('fm_stock_trades',  data.stockTrades   || []);
+    write('fm_dividends',     data.dividends     || []);
+    write('fm_banks',         data.banks         || []);
+    write('fm_subscriptions', data.subscriptions || []);
+    write('fm_dca_plans',     data.dcaPlans      || []);
+    write('fm_debit_log',     data.debitLog      || {});
+
+    const txCount    = (data.transactions || []).length;
+    const tradeCount = (data.stockTrades  || []).length;
+    setStatus(
+      `✅ 匯入完成！<br>${txCount.toLocaleString()} 筆收支 + ${tradeCount} 筆股票交易<br>
+      <a href="index.html" style="color:#3B82F6;font-weight:600;text-decoration:none;font-size:15px;">
+        → 前往財務管理 App
+      </a>`,
+      'ok'
+    );
+  } catch (err) {
+    setStatus('❌ 錯誤：' + err.message, 'err');
+    btn.disabled = false;
+  }
+  // Reset input so the same file can be re-selected
+  e.target.value = '';
+});
+</script>
+</body>
+</html>
