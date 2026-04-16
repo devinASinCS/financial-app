@@ -16,7 +16,8 @@ const StockPrice = (() => {
   // ── Internal helpers ────────────────────────────────────────────
 
   function _workerUrl() {
-    return (localStorage.getItem('fm_worker_url') || '').trim();
+    // Same key that NotionSync uses — set via ⚙️ Settings → Worker URL field
+    return (localStorage.getItem('fm_notion_worker_url') || '').trim();
   }
 
   async function _postWorker(action, payload = {}) {
