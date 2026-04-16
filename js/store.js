@@ -24,6 +24,7 @@ const Store = (() => {
     dcaPlans:       'fm_dca_plans',
     stockPrices:    'fm_stock_prices',
     upcomingTWDivs: 'fm_tw_upcoming_divs',
+    events:         'fm_expense_events',
   };
 
   // ── Helpers ─────────────────────────────────────────────────────
@@ -319,6 +320,42 @@ const Store = (() => {
     return pending;
   }
 
+  // ── Expense Events CRUD ─────────────────────────────────────────
+  /**
+   * Event: { id, name, icon, color, startDate, endDate, note, createdAt }
+   * Transactions carry an optional `eventId` field linking them to an event.
+   */
+  function getEvents() { return load(KEYS.events, []); }
+
+  function addEvent(event) {
+    const list = getEvents();
+    const item = { id: uid(), createdAt: new Date().toISOString(), ...event };
+    list.push(item);
+    save(KEYS.events, list);
+    return item;
+  }
+
+  function updateEvent(id, updates) {
+    save(KEYS.events, getEvents().map(e => e.id === id ? { ...e, ...updates } : e));
+  }
+
+  /**
+   * Delete an event. All transactions that belonged to it are kept but
+   * have their eventId cleared, so nothing is lost.
+   */
+  function deleteEvent(id) {
+    // Unlink transactions
+    const txs = load(KEYS.transactions, []).map(t =>
+      t.eventId === id ? { ...t, eventId: null } : t
+    );
+    save(KEYS.transactions, txs);
+    save(KEYS.events, getEvents().filter(e => e.id !== id));
+  }
+
+  function getEventTransactions(eventId) {
+    return load(KEYS.transactions, []).filter(t => t.eventId === eventId);
+  }
+
   // ── Stock Price Cache ───────────────────────────────────────────
   function getStockPrices() { return load(KEYS.stockPrices, {}); }
   function saveStockPrices(prices) { save(KEYS.stockPrices, prices); }
@@ -513,5 +550,6 @@ const Store = (() => {
     exportData, importData,
     getStockPrices, saveStockPrices, updateStockPrice,
     getUpcomingTWDivs, saveUpcomingTWDivs,
+    getEvents, addEvent, updateEvent, deleteEvent, getEventTransactions,
   };
 })();

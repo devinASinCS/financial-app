@@ -27,11 +27,12 @@ const Modal = (() => {
 
   // ── Transaction Modal ───────────────────────────────────────────
   function openTransaction(existing = null, onSave) {
-    const isEdit = !!existing;
+    // `existing` may be a partial preset (no id) when opening from an event page
+    const isEdit = !!(existing && existing.id);
     const t = existing || {
       date: Utils.today(), type: 'expense', amount: '',
       category: Store.EXPENSE_CATEGORIES[0], note: '', source: 'manual',
-      paymentMethod: 'cash', bankId: null, cardId: null,
+      paymentMethod: 'cash', bankId: null, cardId: null, eventId: null,
     };
 
     const expCats = Store.EXPENSE_CATEGORIES.map(c =>
@@ -133,6 +134,22 @@ const Modal = (() => {
           <label class="form-label">備註</label>
           <textarea id="tx-note" class="form-textarea" placeholder="輸入備註...">${t.note || ''}</textarea>
         </div>
+
+        ${(() => {
+          const events = Store.getEvents();
+          if (events.length === 0) return '';
+          const opts = events.map(e =>
+            `<option value="${e.id}" ${t.eventId === e.id ? 'selected' : ''}>${e.icon || '📋'} ${e.name}</option>`
+          ).join('');
+          return `
+            <div class="form-group">
+              <label class="form-label">歸屬活動 <span style="font-size:11px;color:#9CA3AF;font-weight:400;">（選填）</span></label>
+              <select id="tx-event" class="form-select">
+                <option value="">不歸屬活動</option>
+                ${opts}
+              </select>
+            </div>`;
+        })()}
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
@@ -232,7 +249,8 @@ const Modal = (() => {
       if (paymentMethod === 'bank_transfer') { cardId = null; }
     }
 
-    const data = { date, type, amount, category, note, source: 'manual', paymentMethod, bankId: bankId || null, cardId: cardId || null };
+    const eventId = document.getElementById('tx-event')?.value || null;
+    const data = { date, type, amount, category, note, source: 'manual', paymentMethod, bankId: bankId || null, cardId: cardId || null, eventId: eventId || null };
     if (existingId) {
       Store.updateTransaction(existingId, data);
       Utils.showToast('已更新');
@@ -951,6 +969,110 @@ const Modal = (() => {
     close();
   }
 
+  // ── Event Modal ─────────────────────────────────────────────────
+  const _EVENT_COLORS = [
+    { value: '#3B82F6', label: '藍' }, { value: '#10B981', label: '綠' },
+    { value: '#F59E0B', label: '橙' }, { value: '#EF4444', label: '紅' },
+    { value: '#8B5CF6', label: '紫' }, { value: '#EC4899', label: '粉' },
+    { value: '#06B6D4', label: '青' }, { value: '#F97316', label: '橘' },
+  ];
+
+  function openEvent(existing = null, onSave) {
+    const isEdit = !!existing;
+    const e = existing || {
+      name: '', icon: '📋', color: '#3B82F6',
+      startDate: '', endDate: '', note: '',
+    };
+
+    const colorBtns = _EVENT_COLORS.map(c => `
+      <label style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;">
+        <input type="radio" name="ev-color" value="${c.value}"
+          ${e.color === c.value ? 'checked' : ''}
+          style="display:none;"
+          onchange="Modal._onEventColorChange('${c.value}')">
+        <span class="ev-color-swatch" data-color="${c.value}"
+          style="display:block;width:28px;height:28px;border-radius:50%;background:${c.value};
+                 border:3px solid ${e.color === c.value ? '#1F2937' : 'transparent'};
+                 transition:border-color .15s;cursor:pointer;"></span>
+        <span style="font-size:10px;color:#6B7280;">${c.label}</span>
+      </label>`).join('');
+
+    open(`
+      <div class="modal-header">
+        <span class="modal-title">${isEdit ? '編輯活動' : '新增活動'}</span>
+        <button class="modal-close" onclick="Modal.close()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="grid-2">
+          <div class="form-group" style="flex:3;">
+            <label class="form-label">活動名稱</label>
+            <input type="text" id="ev-name" class="form-input"
+              placeholder="例：日本旅遊、婚禮籌備" value="${e.name}">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label class="form-label">圖示（Emoji）</label>
+            <input type="text" id="ev-icon" class="form-input"
+              placeholder="📋" value="${e.icon || '📋'}"
+              style="font-size:22px;text-align:center;" maxlength="2">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">顏色</label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
+            ${colorBtns}
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">開始日期 <span style="font-size:11px;color:#9CA3AF;font-weight:400;">（選填）</span></label>
+            <input type="date" id="ev-start" class="form-input" value="${e.startDate || ''}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">結束日期 <span style="font-size:11px;color:#9CA3AF;font-weight:400;">（選填）</span></label>
+            <input type="date" id="ev-end" class="form-input" value="${e.endDate || ''}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">備註</label>
+          <textarea id="ev-note" class="form-textarea" placeholder="活動說明...">${e.note || ''}</textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-primary" onclick="Modal._saveEvent(${isEdit ? `'${e.id}'` : 'null'})">
+          ${isEdit ? '儲存' : '建立活動'}
+        </button>
+      </div>
+    `, onSave);
+  }
+
+  function _onEventColorChange(color) {
+    document.querySelectorAll('.ev-color-swatch').forEach(s => {
+      s.style.borderColor = s.dataset.color === color ? '#1F2937' : 'transparent';
+    });
+  }
+
+  function _saveEvent(existingId) {
+    const name      = document.getElementById('ev-name').value.trim();
+    const icon      = document.getElementById('ev-icon').value.trim() || '📋';
+    const color     = document.querySelector('[name="ev-color"]:checked')?.value || '#3B82F6';
+    const startDate = document.getElementById('ev-start').value || null;
+    const endDate   = document.getElementById('ev-end').value || null;
+    const note      = document.getElementById('ev-note').value.trim();
+
+    if (!name) { Utils.showToast('請填寫活動名稱'); return; }
+
+    const data = { name, icon, color, startDate, endDate, note };
+    if (existingId) {
+      Store.updateEvent(existingId, data);
+      Utils.showToast('已更新');
+    } else {
+      Store.addEvent(data);
+      Utils.showToast('活動已建立');
+    }
+    close();
+  }
+
   // ── DCA Execute Modal ───────────────────────────────────────────
   function openDcaExecute(plan, onSave) {
     const isTW = plan.market === 'TW';
@@ -1060,5 +1182,6 @@ const Modal = (() => {
     openSubscription, _onSubBankChange, _saveSubscription,
     openDcaPlan, _onDcaSymbolInput, _onDcaBankChange, _saveDcaPlan,
     openDcaExecute, _calcDcaShares, _executeDca,
+    openEvent, _onEventColorChange, _saveEvent,
   };
 })();

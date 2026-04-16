@@ -7,6 +7,7 @@
   const routes = {
     dashboard:     PageDashboard,
     transactions:  PageTransactions,
+    events:        PageEvents,
     'tw-stocks':   PageTWStocks,
     'us-stocks':   PageUSStocks,
     banks:         PageBanks,
