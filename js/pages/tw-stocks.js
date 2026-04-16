@@ -4,6 +4,8 @@
 const PageTWStocks = (() => {
   const MARKET = 'TW';
   let _activeTab = 'holdings';
+  let _fetchingPrices = false;
+  let _autoFetchDone  = false;
 
   function render() {
     const pendingDca = Store.getPendingDcaPlans(MARKET);
@@ -50,23 +52,62 @@ const PageTWStocks = (() => {
     _renderSummary();
     _renderActionBtns();
     _renderTab();
+
+    // Auto-fetch closing prices after market hours if cache is stale
+    if (!_autoFetchDone) {
+      _autoFetchDone = true;
+      setTimeout(() => {
+        const holdings = Store.getHoldings(MARKET);
+        if (holdings.length > 0 && !StockPrice.isMarketOpen(MARKET)) {
+          const anyStale = holdings.some(h => StockPrice.isCacheStale(h.symbol));
+          if (anyStale) refreshPrices();
+        }
+      }, 800);
+    }
   }
 
   function _renderSummary() {
-    const holdings = Store.getHoldings(MARKET);
-    const realized = Store.getRealizedTrades(MARKET);
-    const divs     = Store.getDividends(MARKET);
+    const holdings   = Store.getHoldings(MARKET);
+    const realized   = Store.getRealizedTrades(MARKET);
+    const divs       = Store.getDividends(MARKET);
+    const priceCache = Store.getStockPrices();
 
     const totalCost   = holdings.reduce((s, h) => s + h.totalCost, 0);
     const realizedPnL = realized.reduce((s, r) => s + r.pnl, 0);
     const divIncome   = divs.reduce((s, d) => s + (d.cashTotal || 0), 0);
-    const totalReturn = realizedPnL + divIncome;
+
+    // Compute market value from cached prices
+    let totalMarketValue = 0;
+    let priceCount = 0;
+    holdings.forEach(h => {
+      const p = priceCache[h.symbol];
+      if (p && p.price && !p.error) {
+        totalMarketValue += p.price * h.quantity;
+        priceCount++;
+      } else {
+        totalMarketValue += h.totalCost;
+      }
+    });
+    const hasPrices      = priceCount > 0;
+    const unrealizedPnL  = hasPrices ? totalMarketValue - totalCost : null;
+    const unrealizedPct  = totalCost > 0 && unrealizedPnL !== null ? (unrealizedPnL / totalCost * 100) : null;
 
     document.getElementById('tw-summary-cards').innerHTML = `
       <div class="card">
         <div class="card-title">持股成本</div>
         <div class="stat-value">${Utils.formatTWD(totalCost)}</div>
-        <div class="stat-sub">${holdings.length} 檔持股</div>
+        <div class="stat-sub">${hasPrices
+          ? '市值 ' + Utils.formatTWD(totalMarketValue)
+          : holdings.length + ' 檔持股'}</div>
+      </div>
+      <div class="card">
+        <div class="card-title">未實現損益</div>
+        ${unrealizedPnL !== null
+          ? `<div class="stat-value ${Utils.pnlClass(unrealizedPnL)}">${Utils.formatTWD(unrealizedPnL, true)}</div>
+             <div class="stat-sub ${Utils.pnlClass(unrealizedPct)}">${Utils.pnlArrow(unrealizedPct)} ${Math.abs(unrealizedPct).toFixed(2)}%</div>`
+          : `<div class="stat-value" style="color:#9CA3AF;font-size:14px;">--</div>
+             <div class="stat-sub"><a href="#" style="color:#3B82F6;" onclick="event.preventDefault();PageTWStocks.refreshPrices()">點此更新報價</a></div>`
+        }
       </div>
       <div class="card">
         <div class="card-title">已實現損益</div>
@@ -77,11 +118,6 @@ const PageTWStocks = (() => {
         <div class="card-title">累計股利收入</div>
         <div class="stat-value" style="color:#8B5CF6;">${Utils.formatTWD(divIncome)}</div>
         <div class="stat-sub">${divs.length} 次除息</div>
-      </div>
-      <div class="card">
-        <div class="card-title">總報酬</div>
-        <div class="stat-value ${Utils.pnlClass(totalReturn)}">${Utils.formatTWD(totalReturn, true)}</div>
-        <div class="stat-sub">交易 + 股利</div>
       </div>
     `;
   }
@@ -119,8 +155,10 @@ const PageTWStocks = (() => {
 
   // ── Holdings Tab ────────────────────────────────────────────────
   function _renderHoldings() {
-    const holdings = Store.getHoldings(MARKET);
-    const container = document.getElementById('tw-tab-content');
+    const holdings     = Store.getHoldings(MARKET);
+    const container    = document.getElementById('tw-tab-content');
+    const priceCache   = Store.getStockPrices();
+    const upcomingDivs = Store.getUpcomingTWDivs();
 
     if (holdings.length === 0) {
       container.innerHTML = `
@@ -137,21 +175,120 @@ const PageTWStocks = (() => {
       return;
     }
 
-    const realized = Store.getRealizedTrades(MARKET);
-    const realizedBySymbol = {};
-    realized.forEach(r => { realizedBySymbol[r.symbol] = (realizedBySymbol[r.symbol] || 0) + r.pnl; });
-
-    // Next upcoming ex-dividend dates from dividends record
-    const divsBySymbol = {};
-    Store.getDividends(MARKET).forEach(d => {
-      if (!divsBySymbol[d.symbol] || d.date > divsBySymbol[d.symbol].date) {
-        divsBySymbol[d.symbol] = d;
-      }
+    // Match upcoming TWSE ex-dividend events to our holdings
+    const mySymbols = new Set(holdings.map(h => h.symbol));
+    const relevantUpcoming = upcomingDivs.filter(d => {
+      const sym = d['股票代號'] ?? d['代號'] ?? '';
+      return mySymbols.has(sym);
     });
 
+    // Last price update timestamp
+    const fetchTimes = holdings
+      .map(h => priceCache[h.symbol]?.fetchedAt)
+      .filter(Boolean)
+      .map(t => new Date(t).getTime());
+    const lastUpdateMs  = fetchTimes.length ? Math.max(...fetchTimes) : 0;
+    const lastUpdateStr = lastUpdateMs
+      ? new Date(lastUpdateMs).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : null;
+
+    // Upcoming ex-dividend alert banner
+    const upcomingAlert = relevantUpcoming.length > 0 ? `
+      <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:flex-start;gap:12px;">
+        <span style="font-size:18px;line-height:1.4;">📅</span>
+        <div>
+          <strong style="color:#92400E;">即將除權息提醒</strong>
+          <div style="font-size:13px;color:#78350F;margin-top:4px;">
+            ${relevantUpcoming.map(d => {
+              const sym    = d['股票代號'] ?? d['代號'] ?? '';
+              const name   = d['名稱'] ?? '';
+              const exDate = d['除息日'] ?? d['除權日'] ?? d['除權息日'] ?? '';
+              const type   = d['除息或除權'] ?? d['類別'] ?? '';
+              const cash   = d['每股配息'] ?? d['現金股利'] ?? '';
+              const stock  = d['每股配股'] ?? d['股票股利'] ?? '';
+              const detail = [
+                cash  ? `配息 ${cash}` : '',
+                stock ? `配股 ${stock}` : '',
+              ].filter(Boolean).join('、');
+              return `<div style="margin-top:2px;">🔹 <strong>${sym} ${name}</strong>${type ? ' ' + type : ''} — 除息日 ${exDate}${detail ? '（' + detail + '）' : ''}</div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>` : '';
+
+    // Build table rows with live price columns
+    const tableRows = holdings.map(h => {
+      const p             = priceCache[h.symbol];
+      const hasPrice      = p && p.price && !p.error;
+      const currentPrice  = hasPrice ? p.price : null;
+      const marketValue   = currentPrice !== null ? currentPrice * h.quantity : null;
+      const unrealizedPnL = marketValue !== null ? marketValue - h.totalCost : null;
+      const unrealizedPct = h.totalCost > 0 && unrealizedPnL !== null ? unrealizedPnL / h.totalCost * 100 : null;
+
+      const changePct     = hasPrice && p.changePercent !== undefined ? p.changePercent : null;
+      const changeHtml    = changePct !== null
+        ? `<div style="font-size:11px;${changePct >= 0 ? 'color:#10B981' : 'color:#EF4444'};">${changePct >= 0 ? '▲' : '▼'} ${Math.abs(changePct).toFixed(2)}%</div>`
+        : '';
+
+      // Upcoming ex-div badge for this symbol
+      const upDiv  = relevantUpcoming.find(d => (d['股票代號'] ?? d['代號'] ?? '') === h.symbol);
+      const exDate = upDiv ? (upDiv['除息日'] ?? upDiv['除權日'] ?? upDiv['除權息日'] ?? '') : '';
+      const exBadge = exDate
+        ? `<div style="font-size:10px;background:#FEF3C7;color:#92400E;padding:1px 5px;border-radius:4px;margin-top:2px;white-space:nowrap;">📅 ${exDate}</div>`
+        : '';
+
+      return `
+        <tr>
+          <td>
+            <strong style="color:#1D4ED8;">${h.symbol}</strong>
+            ${exBadge}
+          </td>
+          <td>${h.name}</td>
+          <td class="text-right">${Utils.formatShares(h.quantity)}</td>
+          <td class="text-right">${Utils.formatTWD(h.avgCost)}</td>
+          <td class="text-right">
+            ${hasPrice ? Utils.formatTWD(currentPrice) : '<span style="color:#D1D5DB;">--</span>'}
+            ${changeHtml}
+          </td>
+          <td class="text-right">
+            ${marketValue !== null ? Utils.formatTWD(marketValue) : '<span style="color:#D1D5DB;">--</span>'}
+          </td>
+          <td class="text-right ${unrealizedPnL !== null ? Utils.pnlClass(unrealizedPnL) : ''}">
+            ${unrealizedPnL !== null
+              ? `${Utils.formatTWD(unrealizedPnL, true)}<div style="font-size:11px;">${Utils.pnlArrow(unrealizedPct)} ${Math.abs(unrealizedPct).toFixed(2)}%</div>`
+              : '<span style="color:#D1D5DB;">--</span>'
+            }
+          </td>
+          <td class="text-center">
+            <button class="btn btn-secondary btn-sm" onclick="PageTWStocks.openAddTrade('${h.symbol}','${h.name}')">交易</button>
+            <button class="btn btn-secondary btn-sm" style="margin-left:4px;color:#8B5CF6;" onclick="PageTWStocks.openAddDividendFor('${h.symbol}')">除權息</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // For pie chart: use market value when prices are available
+    const holdingsForPie = holdings.map(h => {
+      const p  = priceCache[h.symbol];
+      const mv = (p && p.price && !p.error) ? p.price * h.quantity : h.totalCost;
+      return { ...h, totalCost: mv };
+    });
+    const pieLabel = fetchTimes.length > 0 ? '持股分布（市值）' : '持股分布（成本）';
+
     container.innerHTML = `
+      ${upcomingAlert}
       <div style="display:grid;grid-template-columns:3fr 2fr;gap:20px;">
         <div class="card" style="overflow-x:auto;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="card-title" style="margin:0;">持股明細</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+              ${lastUpdateStr ? `<span style="font-size:11px;color:#9CA3AF;">更新：${lastUpdateStr}</span>` : ''}
+              <button class="btn btn-secondary btn-sm" id="tw-refresh-btn"
+                onclick="PageTWStocks.refreshPrices()" ${_fetchingPrices ? 'disabled' : ''}>
+                ${_fetchingPrices ? '更新中…' : '🔄 更新報價'}
+              </button>
+            </div>
+          </div>
           <table class="data-table">
             <thead>
               <tr>
@@ -159,40 +296,23 @@ const PageTWStocks = (() => {
                 <th>名稱</th>
                 <th class="text-right">持股數</th>
                 <th class="text-right">平均成本</th>
-                <th class="text-right">總成本</th>
-                <th class="text-right">已實現損益</th>
+                <th class="text-right">現價</th>
+                <th class="text-right">市值</th>
+                <th class="text-right">未實現損益</th>
                 <th class="text-center">操作</th>
               </tr>
             </thead>
-            <tbody>
-              ${holdings.map(h => {
-                const pnl = realizedBySymbol[h.symbol] || 0;
-                return `
-                  <tr>
-                    <td><strong style="color:#1D4ED8;">${h.symbol}</strong></td>
-                    <td>${h.name}</td>
-                    <td class="text-right">${Utils.formatShares(h.quantity)}</td>
-                    <td class="text-right">${Utils.formatTWD(h.avgCost)}</td>
-                    <td class="text-right">${Utils.formatTWD(h.totalCost)}</td>
-                    <td class="text-right ${Utils.pnlClass(pnl)}">${Utils.formatTWD(pnl, true)}</td>
-                    <td class="text-center">
-                      <button class="btn btn-secondary btn-sm" onclick="PageTWStocks.openAddTrade('${h.symbol}','${h.name}')">交易</button>
-                      <button class="btn btn-secondary btn-sm" style="margin-left:4px;color:#8B5CF6;" onclick="PageTWStocks.openAddDividendFor('${h.symbol}')">除權息</button>
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
+            <tbody>${tableRows}</tbody>
           </table>
         </div>
         <div class="card">
-          <div class="card-title" style="margin-bottom:12px;">持股分布（成本）</div>
+          <div class="card-title" style="margin-bottom:12px;">${pieLabel}</div>
           <canvas id="tw-holdings-pie"></canvas>
         </div>
       </div>
     `;
 
-    setTimeout(() => Charts.renderHoldingsPie('tw-holdings-pie', holdings, 'TWD'), 50);
+    setTimeout(() => Charts.renderHoldingsPie('tw-holdings-pie', holdingsForPie, 'TWD'), 50);
   }
 
   // ── Trades Tab ──────────────────────────────────────────────────
@@ -534,11 +654,51 @@ const PageTWStocks = (() => {
     render();
   }
 
+  // ── Price Refresh ───────────────────────────────────────────────
+  async function refreshPrices() {
+    if (_fetchingPrices) return;
+    _fetchingPrices = true;
+
+    // Update button immediately
+    const btn = document.getElementById('tw-refresh-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '更新中…'; }
+
+    try {
+      const holdings = Store.getHoldings(MARKET);
+      if (holdings.length === 0) { Utils.showToast('尚無持股'); return; }
+
+      const symbols = holdings.map(h => h.symbol);
+
+      // Fetch prices (worker → direct Yahoo fallback)
+      const newPrices = await StockPrice.fetchPrices(MARKET, symbols);
+      const allPrices = Store.getStockPrices();
+      Object.assign(allPrices, newPrices);
+      Store.saveStockPrices(allPrices);
+
+      // Fetch upcoming ex-dividend / ex-rights from TWSE (via worker, best effort)
+      const upcoming = await StockPrice.fetchTWUpcomingDividends(symbols);
+      if (upcoming.length > 0) Store.saveUpcomingTWDivs(upcoming);
+
+      const ok = Object.values(newPrices).filter(p => !p.error).length;
+      Utils.showToast(`已更新 ${ok}/${symbols.length} 檔報價${upcoming.length > 0 ? '，發現 ' + upcoming.length + ' 筆除權息' : ''}`);
+
+      _renderSummary();
+      if (_activeTab === 'holdings') _renderHoldings();
+    } catch (e) {
+      Utils.showToast('報價更新失敗：' + e.message);
+    } finally {
+      _fetchingPrices = false;
+      const btn2 = document.getElementById('tw-refresh-btn');
+      if (btn2) { btn2.disabled = false; btn2.textContent = '🔄 更新報價'; }
+    }
+  }
+
   return {
     render, switchTab,
     openAddTrade, openEditTrade, delTrade,
     openAddDividend, openAddDividendFor, openEditDividend, delDividend,
     openImport,
     openAddDca, openEditDca, delDca, toggleDca, executeDca,
+    refreshPrices,
   };
 })();

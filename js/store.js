@@ -15,13 +15,15 @@ const Store = (() => {
 
   // ── Keys ────────────────────────────────────────────────────────
   const KEYS = {
-    transactions:  'fm_transactions',
-    stockTrades:   'fm_stock_trades',
-    dividends:     'fm_dividends',
-    banks:         'fm_banks',
-    subscriptions: 'fm_subscriptions',
-    debitLog:      'fm_debit_log',
-    dcaPlans:      'fm_dca_plans',
+    transactions:   'fm_transactions',
+    stockTrades:    'fm_stock_trades',
+    dividends:      'fm_dividends',
+    banks:          'fm_banks',
+    subscriptions:  'fm_subscriptions',
+    debitLog:       'fm_debit_log',
+    dcaPlans:       'fm_dca_plans',
+    stockPrices:    'fm_stock_prices',
+    upcomingTWDivs: 'fm_tw_upcoming_divs',
   };
 
   // ── Helpers ─────────────────────────────────────────────────────
@@ -317,6 +319,19 @@ const Store = (() => {
     return pending;
   }
 
+  // ── Stock Price Cache ───────────────────────────────────────────
+  function getStockPrices() { return load(KEYS.stockPrices, {}); }
+  function saveStockPrices(prices) { save(KEYS.stockPrices, prices); }
+  function updateStockPrice(symbol, data) {
+    const prices = getStockPrices();
+    prices[symbol] = { ...data, updatedAt: new Date().toISOString() };
+    save(KEYS.stockPrices, prices);
+  }
+
+  // ── Upcoming TW Dividend Cache ───────────────────────────────────
+  function getUpcomingTWDivs() { return load(KEYS.upcomingTWDivs, []); }
+  function saveUpcomingTWDivs(data) { save(KEYS.upcomingTWDivs, data); }
+
   // ── Computed: Holdings ──────────────────────────────────────────
   function getHoldings(market) {
     const trades = getStockTrades(market);
@@ -496,5 +511,7 @@ const Store = (() => {
     getHoldings, getRealizedTrades, getPnLTimeline,
     getMonthlySummary,
     exportData, importData,
+    getStockPrices, saveStockPrices, updateStockPrice,
+    getUpcomingTWDivs, saveUpcomingTWDivs,
   };
 })();

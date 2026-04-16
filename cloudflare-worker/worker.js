@@ -59,6 +59,20 @@ export default {
         return jsonResp({ ok: true, message: 'Worker is reachable' });
       }
 
+      if (action === 'stockPrices') {
+        const { market, symbols } = body;
+        if (!Array.isArray(symbols) || symbols.length === 0) {
+          return jsonResp({ ok: false, error: 'symbols array required' }, 400);
+        }
+        const prices = await fetchStockPrices(market, symbols);
+        return jsonResp({ ok: true, prices });
+      }
+
+      if (action === 'twDividends') {
+        const dividends = await fetchTWSEDividends();
+        return jsonResp({ ok: true, dividends });
+      }
+
       return jsonResp({ ok: false, error: `Unknown action: ${action}` }, 400);
     } catch (e) {
       return jsonResp({ ok: false, error: e.message }, 500);
@@ -134,6 +148,103 @@ async function saveToNotion(data, env) {
     const result = await notionFetch(`/blocks/${pageId}/children`, 'PATCH', { children: batch }, env);
     if (result.object === 'error') throw new Error(result.message);
   }
+}
+
+// ── Stock Price Fetching ──────────────────────────────────────────────
+
+/**
+ * Fetch closing prices from Yahoo Finance for a list of symbols.
+ * For TW stocks, tries .TW suffix first, then .TWO (OTC).
+ * Also enriches with ex-dividend date from Yahoo quote API when available.
+ */
+async function fetchStockPrices(market, symbols) {
+  const prices = {};
+
+  await Promise.all(symbols.map(async symbol => {
+    const suffixes = market === 'TW' ? ['.TW', '.TWO'] : [''];
+    let priceData = null;
+
+    for (const suffix of suffixes) {
+      try {
+        const yahooSym = symbol + suffix;
+        const url = `https://query2.finance.yahoo.com/v8/finance/chart/${yahooSym}?interval=1d&range=5d`;
+        const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!r.ok) continue;
+
+        const json = await r.json();
+        const result = json.chart?.result?.[0];
+        if (!result) continue;
+
+        const meta = result.meta;
+        const curr = meta.regularMarketPrice;
+        const prev = meta.chartPreviousClose ?? meta.previousClose ?? curr;
+
+        priceData = {
+          price: curr,
+          previousClose: prev,
+          change: curr - prev,
+          changePercent: prev ? (curr - prev) / prev * 100 : 0,
+          currency: meta.currency,
+          marketState: meta.marketState,
+          yahooSymbol: yahooSym,
+          fetchedAt: new Date().toISOString(),
+        };
+        break;
+      } catch { continue; }
+    }
+
+    prices[symbol] = priceData || { error: 'Symbol not found', fetchedAt: new Date().toISOString() };
+  }));
+
+  // Enrich with ex-dividend date via Yahoo quote API (best effort)
+  const validSymbols = symbols.filter(s => prices[s] && !prices[s].error);
+  if (validSymbols.length > 0) {
+    try {
+      const yahooSyms = validSymbols.map(s => prices[s].yahooSymbol).join(',');
+      const qr = await fetch(
+        `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${yahooSyms}`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' } }
+      );
+      if (qr.ok) {
+        const qd = await qr.json();
+        for (const q of (qd.quoteResponse?.result || [])) {
+          const sym = market === 'TW'
+            ? q.symbol.replace(/\.(TW|TWO)$/i, '')
+            : q.symbol;
+          if (prices[sym]) {
+            if (q.exDividendDate) {
+              prices[sym].exDividendDate = new Date(q.exDividendDate * 1000).toISOString().slice(0, 10);
+            }
+            if (q.trailingAnnualDividendRate) {
+              prices[sym].annualDividendRate = q.trailingAnnualDividendRate;
+            }
+          }
+        }
+      }
+    } catch { /* quote API is optional — skip ex-dividend data if unavailable */ }
+  }
+
+  return prices;
+}
+
+/**
+ * Fetch TWSE upcoming ex-dividend / ex-rights schedule.
+ * Returns an array of objects keyed by the TWSE field names.
+ */
+async function fetchTWSEDividends() {
+  try {
+    const r = await fetch('https://www.twse.com.tw/rwd/zh/exRight/TWT48U?response=json', {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    if (!r.ok) return [];
+    const json = await r.json();
+    const fields = json.fields || [];
+    return (json.data || []).map(row => {
+      const obj = {};
+      fields.forEach((f, i) => { obj[f] = row[i]; });
+      return obj;
+    });
+  } catch { return []; }
 }
 
 // ── Load ─────────────────────────────────────────────────────────────

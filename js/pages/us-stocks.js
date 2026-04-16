@@ -3,7 +3,9 @@
  */
 const PageUSStocks = (() => {
   const MARKET = 'US';
-  let _activeTab = 'holdings';
+  let _activeTab      = 'holdings';
+  let _fetchingPrices = false;
+  let _autoFetchDone  = false;
 
   function render() {
     const pendingDca = Store.getPendingDcaPlans(MARKET);
@@ -50,23 +52,62 @@ const PageUSStocks = (() => {
     _renderSummary();
     _renderActionBtns();
     _renderTab();
+
+    // Auto-fetch closing prices after market hours if cache is stale
+    if (!_autoFetchDone) {
+      _autoFetchDone = true;
+      setTimeout(() => {
+        const holdings = Store.getHoldings(MARKET);
+        if (holdings.length > 0 && !StockPrice.isMarketOpen(MARKET)) {
+          const anyStale = holdings.some(h => StockPrice.isCacheStale(h.symbol));
+          if (anyStale) refreshPrices();
+        }
+      }, 1000);
+    }
   }
 
   function _renderSummary() {
-    const holdings  = Store.getHoldings(MARKET);
-    const realized  = Store.getRealizedTrades(MARKET);
-    const divs      = Store.getDividends(MARKET);
+    const holdings   = Store.getHoldings(MARKET);
+    const realized   = Store.getRealizedTrades(MARKET);
+    const divs       = Store.getDividends(MARKET);
+    const priceCache = Store.getStockPrices();
 
     const totalCost   = holdings.reduce((s, h) => s + h.totalCost, 0);
     const realizedPnL = realized.reduce((s, r) => s + r.pnl, 0);
     const divIncome   = divs.reduce((s, d) => s + (d.cashTotal || 0), 0);
-    const totalReturn = realizedPnL + divIncome;
+
+    // Compute market value from cached prices
+    let totalMarketValue = 0;
+    let priceCount = 0;
+    holdings.forEach(h => {
+      const p = priceCache[h.symbol];
+      if (p && p.price && !p.error) {
+        totalMarketValue += p.price * h.quantity;
+        priceCount++;
+      } else {
+        totalMarketValue += h.totalCost;
+      }
+    });
+    const hasPrices     = priceCount > 0;
+    const unrealizedPnL = hasPrices ? totalMarketValue - totalCost : null;
+    const unrealizedPct = totalCost > 0 && unrealizedPnL !== null ? (unrealizedPnL / totalCost * 100) : null;
 
     document.getElementById('us-summary-cards').innerHTML = `
       <div class="card">
         <div class="card-title">持股成本</div>
         <div class="stat-value">${Utils.formatUSD(totalCost)}</div>
-        <div class="stat-sub">${holdings.length} 檔持股</div>
+        <div class="stat-sub">${hasPrices
+          ? '市值 ' + Utils.formatUSD(totalMarketValue)
+          : holdings.length + ' 檔持股'}</div>
+      </div>
+      <div class="card">
+        <div class="card-title">未實現損益</div>
+        ${unrealizedPnL !== null
+          ? `<div class="stat-value ${Utils.pnlClass(unrealizedPnL)}">${Utils.formatUSD(unrealizedPnL, true)}</div>
+             <div class="stat-sub ${Utils.pnlClass(unrealizedPct)}">${Utils.pnlArrow(unrealizedPct)} ${Math.abs(unrealizedPct).toFixed(2)}%</div>`
+          : `<div class="stat-value" style="color:#9CA3AF;font-size:14px;">--</div>
+             <div class="stat-sub"><a href="#" style="color:#3B82F6;" onclick="event.preventDefault();PageUSStocks.refreshPrices()">點此更新報價</a></div>`
+        }
       </div>
       <div class="card">
         <div class="card-title">已實現損益</div>
@@ -77,11 +118,6 @@ const PageUSStocks = (() => {
         <div class="card-title">累計股利收入</div>
         <div class="stat-value" style="color:#8B5CF6;">${Utils.formatUSD(divIncome)}</div>
         <div class="stat-sub">${divs.length} 次配息</div>
-      </div>
-      <div class="card">
-        <div class="card-title">總報酬</div>
-        <div class="stat-value ${Utils.pnlClass(totalReturn)}">${Utils.formatUSD(totalReturn, true)}</div>
-        <div class="stat-sub">交易 + 股利</div>
       </div>
     `;
   }
@@ -119,8 +155,9 @@ const PageUSStocks = (() => {
 
   // ── Holdings ────────────────────────────────────────────────────
   function _renderHoldings() {
-    const holdings = Store.getHoldings(MARKET);
-    const container = document.getElementById('us-tab-content');
+    const holdings   = Store.getHoldings(MARKET);
+    const container  = document.getElementById('us-tab-content');
+    const priceCache = Store.getStockPrices();
 
     if (holdings.length === 0) {
       container.innerHTML = `
@@ -131,13 +168,87 @@ const PageUSStocks = (() => {
       return;
     }
 
-    const realized = Store.getRealizedTrades(MARKET);
-    const realizedBySymbol = {};
-    realized.forEach(r => { realizedBySymbol[r.symbol] = (realizedBySymbol[r.symbol] || 0) + r.pnl; });
+    // Last price update timestamp
+    const fetchTimes = holdings
+      .map(h => priceCache[h.symbol]?.fetchedAt)
+      .filter(Boolean)
+      .map(t => new Date(t).getTime());
+    const lastUpdateMs  = fetchTimes.length ? Math.max(...fetchTimes) : 0;
+    const lastUpdateStr = lastUpdateMs
+      ? new Date(lastUpdateMs).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : null;
+
+    // Build table rows with live price columns
+    const tableRows = holdings.map(h => {
+      const p             = priceCache[h.symbol];
+      const hasPrice      = p && p.price && !p.error;
+      const currentPrice  = hasPrice ? p.price : null;
+      const marketValue   = currentPrice !== null ? currentPrice * h.quantity : null;
+      const unrealizedPnL = marketValue !== null ? marketValue - h.totalCost : null;
+      const unrealizedPct = h.totalCost > 0 && unrealizedPnL !== null ? unrealizedPnL / h.totalCost * 100 : null;
+
+      const changePct  = hasPrice && p.changePercent !== undefined ? p.changePercent : null;
+      const changeHtml = changePct !== null
+        ? `<div style="font-size:11px;${changePct >= 0 ? 'color:#10B981' : 'color:#EF4444'};">${changePct >= 0 ? '▲' : '▼'} ${Math.abs(changePct).toFixed(2)}%</div>`
+        : '';
+
+      // Upcoming ex-dividend date from Yahoo quote data
+      const exDate   = hasPrice && p.exDividendDate ? p.exDividendDate : null;
+      const exBadge  = exDate
+        ? `<div style="font-size:10px;background:#EDE9FE;color:#5B21B6;padding:1px 5px;border-radius:4px;margin-top:2px;white-space:nowrap;">💵 Ex ${exDate}</div>`
+        : '';
+
+      return `
+        <tr>
+          <td>
+            <strong style="color:#1D4ED8;">${h.symbol}</strong>
+            ${exBadge}
+          </td>
+          <td>${h.name}</td>
+          <td class="text-right">${Utils.formatShares(h.quantity)}</td>
+          <td class="text-right">${Utils.formatUSD(h.avgCost)}</td>
+          <td class="text-right">
+            ${hasPrice ? Utils.formatUSD(currentPrice) : '<span style="color:#D1D5DB;">--</span>'}
+            ${changeHtml}
+          </td>
+          <td class="text-right">
+            ${marketValue !== null ? Utils.formatUSD(marketValue) : '<span style="color:#D1D5DB;">--</span>'}
+          </td>
+          <td class="text-right ${unrealizedPnL !== null ? Utils.pnlClass(unrealizedPnL) : ''}">
+            ${unrealizedPnL !== null
+              ? `${Utils.formatUSD(unrealizedPnL, true)}<div style="font-size:11px;">${Utils.pnlArrow(unrealizedPct)} ${Math.abs(unrealizedPct).toFixed(2)}%</div>`
+              : '<span style="color:#D1D5DB;">--</span>'
+            }
+          </td>
+          <td class="text-center">
+            <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openAddTrade('${h.symbol}','${h.name}')">交易</button>
+            <button class="btn btn-secondary btn-sm" style="margin-left:4px;color:#8B5CF6;" onclick="PageUSStocks.openAddDividendFor('${h.symbol}')">股利</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // Pie chart: use market value when available, else cost
+    const holdingsForPie = holdings.map(h => {
+      const p  = priceCache[h.symbol];
+      const mv = (p && p.price && !p.error) ? p.price * h.quantity : h.totalCost;
+      return { ...h, totalCost: mv };
+    });
+    const pieLabel = fetchTimes.length > 0 ? '持股分布（市值）' : '持股分布（成本）';
 
     container.innerHTML = `
       <div style="display:grid;grid-template-columns:3fr 2fr;gap:20px;">
         <div class="card" style="overflow-x:auto;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="card-title" style="margin:0;">持股明細</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+              ${lastUpdateStr ? `<span style="font-size:11px;color:#9CA3AF;">更新：${lastUpdateStr}</span>` : ''}
+              <button class="btn btn-secondary btn-sm" id="us-refresh-btn"
+                onclick="PageUSStocks.refreshPrices()" ${_fetchingPrices ? 'disabled' : ''}>
+                ${_fetchingPrices ? '更新中…' : '🔄 更新報價'}
+              </button>
+            </div>
+          </div>
           <table class="data-table">
             <thead>
               <tr>
@@ -145,40 +256,23 @@ const PageUSStocks = (() => {
                 <th>名稱</th>
                 <th class="text-right">持股數</th>
                 <th class="text-right">平均成本</th>
-                <th class="text-right">總成本</th>
-                <th class="text-right">已實現損益</th>
+                <th class="text-right">現價</th>
+                <th class="text-right">市值</th>
+                <th class="text-right">未實現損益</th>
                 <th class="text-center">操作</th>
               </tr>
             </thead>
-            <tbody>
-              ${holdings.map(h => {
-                const rlz = realizedBySymbol[h.symbol] || 0;
-                return `
-                  <tr>
-                    <td><strong style="color:#1D4ED8;">${h.symbol}</strong></td>
-                    <td>${h.name}</td>
-                    <td class="text-right">${Utils.formatShares(h.quantity)}</td>
-                    <td class="text-right">${Utils.formatUSD(h.avgCost)}</td>
-                    <td class="text-right">${Utils.formatUSD(h.totalCost)}</td>
-                    <td class="text-right ${Utils.pnlClass(rlz)}">${Utils.formatUSD(rlz, true)}</td>
-                    <td class="text-center">
-                      <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openAddTrade('${h.symbol}','${h.name}')">交易</button>
-                      <button class="btn btn-secondary btn-sm" style="margin-left:4px;color:#8B5CF6;" onclick="PageUSStocks.openAddDividendFor('${h.symbol}')">股利</button>
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
+            <tbody>${tableRows}</tbody>
           </table>
         </div>
         <div class="card">
-          <div class="card-title" style="margin-bottom:12px;">持股分布（成本）</div>
+          <div class="card-title" style="margin-bottom:12px;">${pieLabel}</div>
           <canvas id="us-holdings-pie"></canvas>
         </div>
       </div>
     `;
 
-    setTimeout(() => Charts.renderHoldingsPie('us-holdings-pie', holdings, 'USD'), 50);
+    setTimeout(() => Charts.renderHoldingsPie('us-holdings-pie', holdingsForPie, 'USD'), 50);
   }
 
   // ── Trades ──────────────────────────────────────────────────────
@@ -507,11 +601,44 @@ const PageUSStocks = (() => {
     render();
   }
 
+  // ── Price Refresh ───────────────────────────────────────────────
+  async function refreshPrices() {
+    if (_fetchingPrices) return;
+    _fetchingPrices = true;
+
+    const btn = document.getElementById('us-refresh-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '更新中…'; }
+
+    try {
+      const holdings = Store.getHoldings(MARKET);
+      if (holdings.length === 0) { Utils.showToast('尚無持股'); return; }
+
+      const symbols   = holdings.map(h => h.symbol);
+      const newPrices = await StockPrice.fetchPrices(MARKET, symbols);
+      const allPrices = Store.getStockPrices();
+      Object.assign(allPrices, newPrices);
+      Store.saveStockPrices(allPrices);
+
+      const ok = Object.values(newPrices).filter(p => !p.error).length;
+      Utils.showToast(`已更新 ${ok}/${symbols.length} 檔報價`);
+
+      _renderSummary();
+      if (_activeTab === 'holdings') _renderHoldings();
+    } catch (e) {
+      Utils.showToast('報價更新失敗：' + e.message);
+    } finally {
+      _fetchingPrices = false;
+      const btn2 = document.getElementById('us-refresh-btn');
+      if (btn2) { btn2.disabled = false; btn2.textContent = '🔄 更新報價'; }
+    }
+  }
+
   return {
     render, switchTab,
     openAddTrade, openEditTrade, delTrade,
     openAddDividend, openAddDividendFor, openEditDividend, delDividend,
     openImport,
     openAddDca, openEditDca, delDca, toggleDca, executeDca,
+    refreshPrices,
   };
 })();
