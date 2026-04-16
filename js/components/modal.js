@@ -451,79 +451,56 @@ const Modal = (() => {
   }
 
   // ── Dividend Modal ──────────────────────────────────────────────
-  function openDividend(market, existing = null, onSave, holdings = []) {
+  function openDividend(market, existing = null, onSave) {
     const isEdit = !!existing;
-    const isTW = market === 'TW';
+    const isTW   = market === 'TW';
     const d = existing || {
       date: Utils.today(), symbol: '', name: '',
-      cashPerShare: '', stockRatio: '',
-      holdingQuantity: '', note: '', market
+      cashTotal: '', stockShares: '', note: '', market,
     };
-
-    // If pre-filled with a specific holding, auto-select it
-    const preHolding = holdings.find(h => h.symbol === d.symbol);
-    const holdingOptions = holdings.map(h =>
-      `<option value="${h.symbol}" data-qty="${h.quantity}" data-name="${h.name}"
-        ${d.symbol === h.symbol ? 'selected' : ''}>
-        ${h.symbol} ${h.name} (${Utils.formatShares(h.quantity)}股)
-       </option>`
-    ).join('');
-
-    // Pre-fill holding quantity from current holdings if not editing
-    const preQty = d.holdingQuantity || (preHolding ? preHolding.quantity : '');
 
     open(`
       <div class="modal-header">
-        <span class="modal-title">${isEdit ? '編輯' : '新增'}除權息紀錄</span>
+        <span class="modal-title">${isEdit ? '編輯' : '新增'}${isTW ? '除權息' : '股利'}紀錄</span>
         <button class="modal-close" onclick="Modal.close()">✕</button>
       </div>
       <div class="modal-body">
         <div class="grid-2">
           <div class="form-group">
-            <label class="form-label">除息/除權日</label>
+            <label class="form-label">${isTW ? '除息/除權日' : '配息日'}</label>
             <input type="date" id="div-date" class="form-input" value="${d.date}">
           </div>
           <div class="form-group">
-            <label class="form-label">股票</label>
-            ${holdings.length > 0 ? `
-              <select id="div-symbol-select" class="form-select" onchange="Modal._onDivStockChange(this)">
-                <option value="">手動輸入</option>
-                ${holdingOptions}
-              </select>
-              <div style="font-size:11px;color:#9CA3AF;margin-top:3px;">選擇持股後自動帶入股數</div>
-            ` : ''}
-            <input type="text" id="div-symbol" class="form-input" style="margin-top:${holdings.length > 0 ? '6px' : '0'}"
-              placeholder="${isTW ? '股票代號' : '代碼'}" value="${d.symbol}"
+            <label class="form-label">${isTW ? '股票代號' : '股票代碼'}</label>
+            <input type="text" id="div-symbol" class="form-input"
+              placeholder="${isTW ? '例：2886' : '例：AAPL'}"
+              value="${d.symbol}" style="text-transform:uppercase"
               oninput="Modal._onDivSymbolInput('${market}')">
           </div>
         </div>
-        <div class="grid-2">
-          <div class="form-group">
-            <label class="form-label">股票名稱</label>
-            <input type="text" id="div-name" class="form-input" placeholder="${isTW ? '例：台積電' : '例：AAPL'}" value="${d.name}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">
-              持有股數
-              ${holdings.length > 0 ? `<span style="font-size:11px;color:#9CA3AF;font-weight:400;">（從持股自動帶入）</span>` : ''}
-            </label>
-            <input type="number" id="div-holding" class="form-input" placeholder="0" value="${preQty}" oninput="Modal._calcDiv()">
-          </div>
+        <div class="form-group">
+          <label class="form-label">
+            股票名稱
+            <span style="font-size:11px;color:#9CA3AF;font-weight:400;">（輸入代號後自動帶入）</span>
+          </label>
+          <input type="text" id="div-name" class="form-input"
+            placeholder="${isTW ? '例：兆豐金' : '例：Apple Inc.'}" value="${d.name || ''}">
         </div>
         <div class="grid-2">
           <div class="form-group">
-            <label class="form-label">現金股利 (${isTW ? 'NT$/股' : '$/股'})</label>
-            <input type="number" id="div-cash" class="form-input" placeholder="0.00" value="${d.cashPerShare || ''}" step="0.0001" oninput="Modal._calcDiv()">
+            <label class="form-label">實際收到現金股利 (${isTW ? 'NT$' : '$'}) <span style="font-size:11px;color:#9CA3AF;font-weight:400;">總額</span></label>
+            <input type="number" id="div-cash-total" class="form-input"
+              placeholder="0" value="${d.cashTotal || ''}"
+              min="0" step="${isTW ? '1' : '0.01'}">
           </div>
           ${isTW ? `
           <div class="form-group">
-            <label class="form-label">股票股利 (股/千股)</label>
-            <input type="number" id="div-stock" class="form-input" placeholder="0" value="${d.stockRatio || ''}" step="0.0001" oninput="Modal._calcDiv()">
-          </div>
-          ` : '<div></div>'}
+            <label class="form-label">配股股數 <span style="font-size:11px;color:#9CA3AF;font-weight:400;">（選填）</span></label>
+            <input type="number" id="div-stock-shares" class="form-input"
+              placeholder="0" value="${d.stockShares || ''}" min="0" step="1">
+          </div>` : '<div></div>'}
         </div>
-        <div id="div-calc-preview" style="background:#EFF6FF;padding:12px 14px;border-radius:8px;font-size:13px;color:#1E40AF;display:none;"></div>
-        <div class="form-group" style="margin-top:12px;">
+        <div class="form-group">
           <label class="form-label">備註</label>
           <input type="text" id="div-note" class="form-input" placeholder="備註..." value="${d.note || ''}">
         </div>
@@ -535,79 +512,38 @@ const Modal = (() => {
         </button>
       </div>
     `, onSave);
-
-    setTimeout(() => Modal._calcDiv(), 0);
-  }
-
-  function _onDivStockChange(sel) {
-    const opt = sel.selectedOptions[0];
-    if (!opt || !opt.value) return;
-    const sym = document.getElementById('div-symbol');
-    const name = document.getElementById('div-name');
-    const holding = document.getElementById('div-holding');
-    if (sym) sym.value = opt.value;
-    if (name) name.value = opt.dataset.name || '';
-    if (holding) { holding.value = opt.dataset.qty || ''; Modal._calcDiv(); }
   }
 
   function _onDivSymbolInput(market) {
     const symbol = document.getElementById('div-symbol')?.value.trim().toUpperCase();
-    if (!symbol || symbol.length < 2) return;
+    if (!symbol || symbol.length < 1) return;
+    const nameEl = document.getElementById('div-name');
+    if (!nameEl || nameEl.value) return; // don't overwrite manual entry
+
+    // Search current holdings first, then all past trades
     const holdings = Store.getHoldings(market);
-    const match = holdings.find(h => h.symbol === symbol);
-    if (match) {
-      const nameEl = document.getElementById('div-name');
-      const holdingEl = document.getElementById('div-holding');
-      if (nameEl && !nameEl.value) nameEl.value = match.name;
-      if (holdingEl && !holdingEl.value) {
-        holdingEl.value = match.quantity;
-        Modal._calcDiv();
-      }
-    }
-  }
+    const holding  = holdings.find(h => h.symbol === symbol);
+    if (holding) { nameEl.value = holding.name; return; }
 
-  function _calcDiv() {
-    const holding     = parseFloat(document.getElementById('div-holding')?.value || 0);
-    const cashPerShare= parseFloat(document.getElementById('div-cash')?.value || 0);
-    const stockRatioEl= document.getElementById('div-stock');
-    const stockRatio  = stockRatioEl ? parseFloat(stockRatioEl.value || 0) : 0;
-    const prev        = document.getElementById('div-calc-preview');
-    if (!prev) return;
-
-    const cashTotal  = holding * cashPerShare;
-    const stockShares= Math.floor(holding / 1000 * stockRatio);
-
-    if (cashTotal > 0 || stockShares > 0) {
-      prev.style.display = '';
-      prev.innerHTML = `
-        <strong>預計獲得：</strong><br>
-        ${cashTotal > 0 ? `💵 現金股利：<strong>NT$ ${Utils.formatNumber(cashTotal, 2)}</strong><br>` : ''}
-        ${stockShares > 0 ? `📈 股票股利：<strong>${stockShares} 股</strong>` : ''}
-      `;
-    } else {
-      prev.style.display = 'none';
-    }
+    const trade = Store.getStockTrades(market).find(t => t.symbol === symbol);
+    if (trade) nameEl.value = trade.name;
   }
 
   function _saveDiv(market, existingId) {
-    const date          = document.getElementById('div-date').value;
-    const symbol        = document.getElementById('div-symbol').value.trim();
-    const name          = document.getElementById('div-name').value.trim();
-    const holdingQty    = parseFloat(document.getElementById('div-holding').value || 0);
-    const cashPerShare  = parseFloat(document.getElementById('div-cash').value || 0);
-    const stockRatioEl  = document.getElementById('div-stock');
-    const stockRatio    = stockRatioEl ? parseFloat(stockRatioEl.value || 0) : 0;
-    const note          = document.getElementById('div-note').value.trim();
+    const date      = document.getElementById('div-date').value;
+    const symbol    = document.getElementById('div-symbol').value.trim().toUpperCase();
+    const name      = document.getElementById('div-name').value.trim();
+    const cashTotal = parseFloat(document.getElementById('div-cash-total')?.value || 0);
+    const stockSharesEl = document.getElementById('div-stock-shares');
+    const stockShares   = stockSharesEl ? (parseInt(stockSharesEl.value || 0) || 0) : 0;
+    const note      = document.getElementById('div-note').value.trim();
 
     if (!date || !symbol) { Utils.showToast('請填寫日期與股票代號'); return; }
 
-    const cashTotal  = holdingQty * cashPerShare;
-    const stockShares= Math.floor(holdingQty / 1000 * stockRatio);
-
     const data = {
       date, symbol, name: name || symbol, market,
-      cashPerShare, stockRatio, holdingQuantity: holdingQty,
       cashTotal, stockShares, note,
+      cashPerShare: null, stockRatio: null, holdingQuantity: null,
     };
 
     if (existingId) {
@@ -620,11 +556,12 @@ const Modal = (() => {
           date, type: 'income',
           amount: cashTotal,
           category: '股利',
-          note: `${symbol} ${name} 現金股利`,
+          note: `${symbol} ${name || symbol} ${market === 'TW' ? '除權息' : '股利'}`,
           source: 'dividend',
         });
       }
-      Utils.showToast(`已新增${cashTotal > 0 ? `，現金股利 NT$${Utils.formatNumber(cashTotal,2)} 已計入收入` : ''}`);
+      const fmtAmt = market === 'TW' ? Utils.formatTWD(cashTotal) : Utils.formatUSD(cashTotal);
+      Utils.showToast(`已新增${cashTotal > 0 ? `，${fmtAmt} 已計入收入` : ''}`);
     }
     close();
   }
@@ -1319,7 +1256,7 @@ const Modal = (() => {
     _onPaymentChange, _onPaymentBankChange,
     openExchangeRates, _resetExchangeRates, _saveExchangeRates,
     openStockTrade, _updateTradePreview, _saveTrade,
-    openDividend, _onDivStockChange, _onDivSymbolInput, _calcDiv, _saveDiv,
+    openDividend, _onDivSymbolInput, _saveDiv,
     openImport, _doImport,
     openBank, _saveBank,
     openCreditCard, _saveCreditCard,

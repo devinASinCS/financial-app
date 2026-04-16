@@ -338,52 +338,77 @@ const PageUSStocks = (() => {
 
   // ── Dividends ───────────────────────────────────────────────────
   function _renderDividends() {
-    const divs = Store.getDividends(MARKET).slice().reverse();
-    const holdings = Store.getHoldings(MARKET);
+    const divs      = Store.getDividends(MARKET).slice().sort((a, b) => b.date.localeCompare(a.date));
     const container = document.getElementById('us-tab-content');
 
+    if (divs.length === 0) {
+      container.innerHTML = `
+        <div class="card">
+          <div class="empty-state">
+            <div class="empty-state-icon">💵</div>
+            <div class="empty-state-text">尚無股利紀錄</div>
+            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageUSStocks.openAddDividend()">＋ 新增股利</button>
+          </div>
+        </div>`;
+      return;
+    }
+
+    // Group by symbol → sorted by total desc
+    const bySymbol = {};
+    divs.forEach(d => {
+      if (!bySymbol[d.symbol]) bySymbol[d.symbol] = { symbol: d.symbol, name: d.name, cashTotal: 0, count: 0 };
+      bySymbol[d.symbol].cashTotal += d.cashTotal || 0;
+      bySymbol[d.symbol].count++;
+    });
+    const grouped    = Object.values(bySymbol).sort((a, b) => b.cashTotal - a.cashTotal);
+    const grandTotal = grouped.reduce((s, g) => s + g.cashTotal, 0);
+
     container.innerHTML = `
+      <!-- Per-stock summary cards -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px;">
+        ${grouped.map(g => `
+          <div class="card" style="border-left:4px solid #8B5CF6;padding:14px 16px;">
+            <div style="font-weight:700;color:#1D4ED8;font-size:15px;">${g.symbol}</div>
+            <div style="font-size:12px;color:#6B7280;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${g.name}</div>
+            <div style="font-size:20px;font-weight:700;color:#8B5CF6;">${Utils.formatUSD(g.cashTotal)}</div>
+            <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">${g.count} 次紀錄</div>
+          </div>`).join('')}
+        <div class="card" style="border-left:4px solid #10B981;padding:14px 16px;background:#F0FDF4;">
+          <div style="font-size:12px;color:#6B7280;margin-bottom:8px;">全部合計</div>
+          <div style="font-size:20px;font-weight:700;color:#059669;">${Utils.formatUSD(grandTotal)}</div>
+          <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">${divs.length} 筆紀錄 · ${grouped.length} 檔股票</div>
+        </div>
+      </div>
+
+      <!-- Full history table -->
       <div class="card" style="overflow-x:auto;">
-        ${divs.length === 0
-          ? `<div class="empty-state">
-               <div class="empty-state-icon">💵</div>
-               <div class="empty-state-text">尚無股利紀錄</div>
-               ${holdings.length > 0
-                 ? `<button class="btn btn-primary" style="margin-top:12px;" onclick="PageUSStocks.openAddDividend()">＋ 新增股利</button>`
-                 : ''}
-             </div>`
-          : `<table class="data-table">
-              <thead>
-                <tr>
-                  <th>配息日</th>
-                  <th>代號</th>
-                  <th>名稱</th>
-                  <th class="text-right">持有股數</th>
-                  <th class="text-right">每股股利</th>
-                  <th class="text-right">股利總額</th>
-                  <th>備註</th>
-                  <th class="text-center">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${divs.map(d => `
-                  <tr>
-                    <td>${Utils.formatDate(d.date)}</td>
-                    <td><strong style="color:#1D4ED8;">${d.symbol}</strong></td>
-                    <td>${d.name}</td>
-                    <td class="text-right">${Utils.formatShares(d.holdingQuantity)}</td>
-                    <td class="text-right">${Utils.formatUSD(d.cashPerShare)}</td>
-                    <td class="text-right" style="color:#8B5CF6;font-weight:600;">${Utils.formatUSD(d.cashTotal)}</td>
-                    <td style="color:#6B7280;font-size:12px;">${d.note || '-'}</td>
-                    <td class="text-center">
-                      <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openEditDividend('${d.id}')">編輯</button>
-                      <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="PageUSStocks.delDividend('${d.id}')">刪除</button>
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>`
-        }
+        <div class="card-title" style="margin-bottom:12px;">完整股利紀錄</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>代號</th>
+              <th>名稱</th>
+              <th class="text-right">股利總額</th>
+              <th>備註</th>
+              <th class="text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${divs.map(d => `
+              <tr>
+                <td style="white-space:nowrap;">${Utils.formatDate(d.date)}</td>
+                <td><strong style="color:#1D4ED8;">${d.symbol}</strong></td>
+                <td>${d.name}</td>
+                <td class="text-right" style="color:#8B5CF6;font-weight:600;">${d.cashTotal > 0 ? Utils.formatUSD(d.cashTotal) : '-'}</td>
+                <td style="font-size:12px;color:#6B7280;">${d.note || '-'}</td>
+                <td class="text-center">
+                  <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openEditDividend('${d.id}')">編輯</button>
+                  <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="PageUSStocks.delDividend('${d.id}')">刪除</button>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
       </div>
     `;
   }
@@ -537,25 +562,17 @@ const PageUSStocks = (() => {
   }
 
   function openAddDividend() {
-    const holdings = Store.getHoldings(MARKET);
-    Modal.openDividend(MARKET, null, _refresh, holdings);
+    Modal.openDividend(MARKET, null, _refresh);
   }
 
   function openAddDividendFor(symbol) {
-    const holdings = Store.getHoldings(MARKET);
-    const holding = holdings.find(h => h.symbol === symbol);
-    const pre = holding
-      ? { symbol: holding.symbol, name: holding.name, holdingQuantity: holding.quantity, market: MARKET }
-      : { symbol, market: MARKET };
-    Modal.openDividend(MARKET, pre, _refresh, holdings);
+    const trade = Store.getStockTrades(MARKET).find(t => t.symbol === symbol);
+    Modal.openDividend(MARKET, { symbol, name: trade?.name || '', market: MARKET }, _refresh);
   }
 
   function openEditDividend(id) {
     const d = Store.getDividends(MARKET).find(d => d.id === id);
-    if (d) {
-      const holdings = Store.getHoldings(MARKET);
-      Modal.openDividend(MARKET, d, _refresh, holdings);
-    }
+    if (d) Modal.openDividend(MARKET, d, _refresh);
   }
 
   function delDividend(id) {
