@@ -83,8 +83,32 @@ const Modal = (() => {
             <input type="date" id="tx-date" class="form-input" value="${t.date}">
           </div>
           <div class="form-group">
-            <label class="form-label">金額 (NT$)</label>
-            <input type="number" id="tx-amount" class="form-input" placeholder="0" value="${t.amount || ''}" min="0" step="1">
+            <label class="form-label">幣別與金額</label>
+            <div style="display:flex;gap:6px;">
+              <select id="tx-currency" class="form-select" style="width:auto;min-width:88px;"
+                onchange="Modal._onCurrencyChange()">
+                ${CURRENCIES.map(c =>
+                  `<option value="${c.code}" ${(t.foreignCurrency || 'TWD') === c.code ? 'selected' : ''}>${c.code}</option>`
+                ).join('')}
+              </select>
+              <input type="number" id="tx-foreign-amount" class="form-input" placeholder="0"
+                value="${t.foreignCurrency && t.foreignCurrency !== 'TWD' ? (t.foreignAmount || '') : (t.amount || '')}"
+                min="0" step="any" oninput="Modal._calcFX()">
+            </div>
+          </div>
+        </div>
+        <div id="tx-fx-row" style="display:${t.foreignCurrency && t.foreignCurrency !== 'TWD' ? '' : 'none'};margin-bottom:14px;">
+          <div style="background:#FFF7ED;border-radius:8px;padding:10px 14px;font-size:13px;color:#92400E;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span>1&nbsp;<span id="tx-fx-code">${t.foreignCurrency || ''}</span>&nbsp;=</span>
+            <input type="number" id="tx-fx-rate" class="form-input"
+              style="width:90px;padding:4px 8px;font-size:13px;"
+              value="${t.exchangeRate || ''}"
+              min="0.00001" step="0.00001" oninput="Modal._calcFX()">
+            <span>NT$&nbsp;&nbsp;→&nbsp;&nbsp;共計&nbsp;</span>
+            <strong id="tx-fx-preview">—</strong>
+            <button type="button"
+              style="font-size:11px;color:#6B7280;text-decoration:underline;background:none;border:none;cursor:pointer;padding:0;margin-left:4px;"
+              onclick="Modal.openExchangeRates()">編輯匯率</button>
           </div>
         </div>
         <div class="form-group">
@@ -162,6 +186,7 @@ const Modal = (() => {
     setTimeout(() => {
       Modal._onTypeChange({ value: t.type });
       Modal._onPaymentChange({ value: payMethod });
+      if (t.foreignCurrency && t.foreignCurrency !== 'TWD') Modal._calcFX();
     }, 0);
   }
 
@@ -230,15 +255,58 @@ const Modal = (() => {
     }
   }
 
+  function _onCurrencyChange() {
+    const code  = document.getElementById('tx-currency')?.value || 'TWD';
+    const fxRow = document.getElementById('tx-fx-row');
+    const codeEl = document.getElementById('tx-fx-code');
+    const rateEl = document.getElementById('tx-fx-rate');
+    if (!fxRow) return;
+
+    if (code !== 'TWD') {
+      fxRow.style.display = '';
+      if (codeEl) codeEl.textContent = code;
+      if (rateEl) rateEl.value = Store.getExchangeRate(code);
+      _calcFX();
+    } else {
+      fxRow.style.display = 'none';
+      const prev = document.getElementById('tx-fx-preview');
+      if (prev) prev.textContent = '—';
+    }
+  }
+
+  function _calcFX() {
+    const amt  = parseFloat(document.getElementById('tx-foreign-amount')?.value || 0);
+    const rate = parseFloat(document.getElementById('tx-fx-rate')?.value || 0);
+    const prev = document.getElementById('tx-fx-preview');
+    if (!prev) return;
+    prev.textContent = (amt > 0 && rate > 0)
+      ? Utils.formatTWD(Math.round(amt * rate))
+      : '—';
+  }
+
   function _saveTx(existingId) {
     const type     = document.querySelector('[name="tx-type"]:checked')?.value || 'expense';
     const date     = document.getElementById('tx-date').value;
-    const amount   = parseFloat(document.getElementById('tx-amount').value);
     const category = document.getElementById('tx-category').value;
     const note     = document.getElementById('tx-note').value.trim();
 
     if (!date) { Utils.showToast('請填寫日期'); return; }
-    if (!amount || amount <= 0) { Utils.showToast('請填寫有效金額'); return; }
+
+    // ── Currency / FX ───────────────────────────────────────────
+    const currency = document.getElementById('tx-currency')?.value || 'TWD';
+    let amount, foreignAmount = null, foreignCurrency = null, exchangeRate = null;
+
+    if (currency !== 'TWD') {
+      foreignAmount = parseFloat(document.getElementById('tx-foreign-amount')?.value || 0);
+      exchangeRate  = parseFloat(document.getElementById('tx-fx-rate')?.value || 0);
+      if (!foreignAmount || foreignAmount <= 0) { Utils.showToast('請填寫有效金額'); return; }
+      if (!exchangeRate  || exchangeRate  <= 0) { Utils.showToast('請填寫匯率'); return; }
+      amount = Math.round(foreignAmount * exchangeRate);
+      foreignCurrency = currency;
+    } else {
+      amount = parseFloat(document.getElementById('tx-foreign-amount')?.value || 0);
+      if (!amount || amount <= 0) { Utils.showToast('請填寫有效金額'); return; }
+    }
 
     let paymentMethod = null, bankId = null, cardId = null;
     if (type === 'expense') {
@@ -250,7 +318,12 @@ const Modal = (() => {
     }
 
     const eventId = document.getElementById('tx-event')?.value || null;
-    const data = { date, type, amount, category, note, source: 'manual', paymentMethod, bankId: bankId || null, cardId: cardId || null, eventId: eventId || null };
+    const data = {
+      date, type, amount, category, note, source: 'manual',
+      paymentMethod, bankId: bankId || null, cardId: cardId || null,
+      eventId: eventId || null,
+      foreignAmount, foreignCurrency, exchangeRate,
+    };
     if (existingId) {
       Store.updateTransaction(existingId, data);
       Utils.showToast('已更新');
@@ -969,6 +1042,22 @@ const Modal = (() => {
     close();
   }
 
+  // ── Currency definitions ─────────────────────────────────────────
+  const CURRENCIES = [
+    { code: 'TWD', symbol: 'NT$', name: '新台幣' },
+    { code: 'JPY', symbol: '¥',   name: '日圓' },
+    { code: 'USD', symbol: '$',   name: '美元' },
+    { code: 'EUR', symbol: '€',   name: '歐元' },
+    { code: 'GBP', symbol: '£',   name: '英鎊' },
+    { code: 'KRW', symbol: '₩',   name: '韓圓' },
+    { code: 'THB', symbol: '฿',   name: '泰銖' },
+    { code: 'SGD', symbol: 'S$',  name: '新幣' },
+    { code: 'AUD', symbol: 'A$',  name: '澳幣' },
+    { code: 'HKD', symbol: 'HK$', name: '港幣' },
+    { code: 'CNY', symbol: '¥',   name: '人民幣' },
+    { code: 'MYR', symbol: 'RM',  name: '馬幣' },
+  ];
+
   // ── Event Modal ─────────────────────────────────────────────────
   const _EVENT_COLORS = [
     { value: '#3B82F6', label: '藍' }, { value: '#10B981', label: '綠' },
@@ -1073,6 +1162,60 @@ const Modal = (() => {
     close();
   }
 
+  // ── Exchange Rates Modal ─────────────────────────────────────────
+  function openExchangeRates() {
+    const rates = Store.getExchangeRates();
+    const fxCurrencies = CURRENCIES.filter(c => c.code !== 'TWD');
+
+    const rows = fxCurrencies.map(c => `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <span style="width:44px;font-weight:700;font-size:14px;">${c.code}</span>
+        <span style="flex:1;font-size:13px;color:#6B7280;">${c.name}</span>
+        <span style="font-size:13px;white-space:nowrap;">1 ${c.code} =</span>
+        <input type="number" id="rate-${c.code}" class="form-input"
+          style="width:96px;padding:4px 8px;font-size:13px;text-align:right;"
+          value="${rates[c.code] || ''}" min="0.00001" step="0.00001">
+        <span style="font-size:13px;">NT$</span>
+      </div>`).join('');
+
+    open(`
+      <div class="modal-header">
+        <span class="modal-title">匯率設定</span>
+        <button class="modal-close" onclick="Modal.close()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;color:#6B7280;margin-bottom:16px;">
+          設定各幣別對新台幣的換算匯率，用於計算外幣支出的台幣金額。
+        </p>
+        ${rows}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="Modal._resetExchangeRates()">恢復預設</button>
+        <button class="btn btn-secondary" style="margin-left:auto;" onclick="Modal.close()">取消</button>
+        <button class="btn btn-primary" onclick="Modal._saveExchangeRates()">儲存</button>
+      </div>
+    `);
+  }
+
+  function _resetExchangeRates() {
+    const def = Store.DEFAULT_EXCHANGE_RATES;
+    CURRENCIES.filter(c => c.code !== 'TWD').forEach(c => {
+      const el = document.getElementById(`rate-${c.code}`);
+      if (el) el.value = def[c.code] ?? '';
+    });
+  }
+
+  function _saveExchangeRates() {
+    const rates = {};
+    CURRENCIES.filter(c => c.code !== 'TWD').forEach(c => {
+      const val = parseFloat(document.getElementById(`rate-${c.code}`)?.value || 0);
+      if (val > 0) rates[c.code] = val;
+    });
+    Store.saveExchangeRates(rates);
+    Utils.showToast('匯率已儲存');
+    close();
+  }
+
   // ── DCA Execute Modal ───────────────────────────────────────────
   function openDcaExecute(plan, onSave) {
     const isTW = plan.market === 'TW';
@@ -1172,8 +1315,9 @@ const Modal = (() => {
 
   return {
     open, close,
-    openTransaction, _onTypeChange, _saveTx,
+    openTransaction, _onTypeChange, _onCurrencyChange, _calcFX, _saveTx,
     _onPaymentChange, _onPaymentBankChange,
+    openExchangeRates, _resetExchangeRates, _saveExchangeRates,
     openStockTrade, _updateTradePreview, _saveTrade,
     openDividend, _onDivStockChange, _onDivSymbolInput, _calcDiv, _saveDiv,
     openImport, _doImport,

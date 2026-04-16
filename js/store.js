@@ -13,6 +13,12 @@ const Store = (() => {
     '薪資', '獎金', '投資收益', '股利', '副業', '其他'
   ];
 
+  // ── Default exchange rates (1 unit → NT$) ──────────────────────
+  const DEFAULT_EXCHANGE_RATES = {
+    JPY: 0.21, USD: 32.5, EUR: 35.5, GBP: 41.0, KRW: 0.024,
+    THB: 0.92, SGD: 24.0, AUD: 21.0, HKD: 4.2,  CNY: 4.5, MYR: 7.2,
+  };
+
   // ── Keys ────────────────────────────────────────────────────────
   const KEYS = {
     transactions:   'fm_transactions',
@@ -25,6 +31,7 @@ const Store = (() => {
     stockPrices:    'fm_stock_prices',
     upcomingTWDivs: 'fm_tw_upcoming_divs',
     events:         'fm_expense_events',
+    exchangeRates:  'fm_exchange_rates',
   };
 
   // ── Helpers ─────────────────────────────────────────────────────
@@ -369,6 +376,12 @@ const Store = (() => {
   function getUpcomingTWDivs() { return load(KEYS.upcomingTWDivs, []); }
   function saveUpcomingTWDivs(data) { save(KEYS.upcomingTWDivs, data); }
 
+  // ── Exchange Rates ───────────────────────────────────────────────
+  /** Returns merged defaults + user overrides so all currencies are always present. */
+  function getExchangeRates() { return { ...DEFAULT_EXCHANGE_RATES, ...load(KEYS.exchangeRates, {}) }; }
+  function saveExchangeRates(rates) { save(KEYS.exchangeRates, rates); }
+  function getExchangeRate(code) { return getExchangeRates()[code] || 1; }
+
   // ── Computed: Holdings ──────────────────────────────────────────
   function getHoldings(market) {
     const trades = getStockTrades(market);
@@ -551,5 +564,6 @@ const Store = (() => {
     getStockPrices, saveStockPrices, updateStockPrice,
     getUpcomingTWDivs, saveUpcomingTWDivs,
     getEvents, addEvent, updateEvent, deleteEvent, getEventTransactions,
+    DEFAULT_EXCHANGE_RATES, getExchangeRates, saveExchangeRates, getExchangeRate,
   };
 })();

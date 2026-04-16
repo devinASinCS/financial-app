@@ -9,6 +9,14 @@ const PageEvents = (() => {
 
   let _currentEventId = null; // null = list view, string = detail view
 
+  // ── Helpers ──────────────────────────────────────────────────────
+  const _FX_SYMBOL = { JPY:'¥', USD:'$', EUR:'€', GBP:'£', KRW:'₩', THB:'฿', SGD:'S$', AUD:'A$', HKD:'HK$', CNY:'¥', MYR:'RM' };
+  function _fxLabel(t) {
+    if (!t.foreignCurrency || t.foreignCurrency === 'TWD') return '';
+    const sym = _FX_SYMBOL[t.foreignCurrency] || (t.foreignCurrency + ' ');
+    return `<div style="font-size:11px;color:#9CA3AF;font-weight:400;">${sym}${Utils.formatNumber(t.foreignAmount, 0)}</div>`;
+  }
+
   // ── Entry point ──────────────────────────────────────────────────
   function render() {
     _currentEventId = null;
@@ -171,6 +179,7 @@ const PageEvents = (() => {
                  </td>
                  <td class="text-right ${t.type === 'expense' ? 'text-loss' : 'text-profit'}" style="font-weight:600;">
                    ${t.type === 'expense' ? '-' : '+'}${Utils.formatTWD(t.amount)}
+                   ${_fxLabel(t)}
                  </td>
                  <td class="text-center">
                    <button class="btn btn-secondary btn-sm" onclick="PageEvents.openEditTx('${t.id}')">編輯</button>
@@ -216,6 +225,7 @@ const PageEvents = (() => {
           </div>
         </div>
         <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary" onclick="Modal.openExchangeRates()">💱 匯率</button>
           <button class="btn btn-secondary" onclick="PageEvents.openEdit('${event.id}')">✏️ 編輯活動</button>
           <button class="btn btn-secondary" onclick="PageEvents.openAddTx()">＋ 新增收支</button>
         </div>
