@@ -3,6 +3,7 @@
  */
 const Modal = (() => {
   let _onClose = null;
+  let _nameTimer = null;  // debounce handle for stock name lookup
 
   function open(html, onClose) {
     const overlay = document.getElementById('modal-overlay');
@@ -369,7 +370,7 @@ const Modal = (() => {
           </div>
           <div class="form-group">
             <label class="form-label">${isTW ? '股票代號' : '股票代碼'}</label>
-            <input type="text" id="trade-symbol" class="form-input" placeholder="${isTW ? '例：2330' : '例：AAPL'}" value="${t.symbol}" style="text-transform:uppercase">
+            <input type="text" id="trade-symbol" class="form-input" placeholder="${isTW ? '例：2330' : '例：AAPL'}" value="${t.symbol}" style="text-transform:uppercase" oninput="Modal._onTradeSymbolInput('${market}')">
           </div>
         </div>
         <div class="form-group">
@@ -411,6 +412,54 @@ const Modal = (() => {
       if (el) el.addEventListener('input', _updateTradePreview);
     });
     _updateTradePreview();
+  }
+
+  /**
+   * Shared helper: auto-fill a name <input> for a stock symbol.
+   * Checks local store first, then queries Yahoo Finance with debounce.
+   * @param {string} market   'TW' or 'US'
+   * @param {string} symbol   uppercase stock code
+   * @param {HTMLElement} nameEl  the name input element to fill
+   */
+  function _lookupStockName(market, symbol, nameEl) {
+    if (!nameEl || nameEl.value) return;  // don't overwrite manual entry
+
+    // Fast path: check holdings + past trades in store
+    const holdings = Store.getHoldings(market);
+    const holding = holdings.find(h => h.symbol === symbol);
+    if (holding) { nameEl.value = holding.name; return; }
+
+    const trade = Store.getStockTrades(market).find(t => t.symbol === symbol);
+    if (trade) { nameEl.value = trade.name; return; }
+
+    // Minimum length guard before hitting the network
+    const minLen = market === 'TW' ? 4 : 2;
+    if (symbol.length < minLen) return;
+
+    // Debounce network lookup (500 ms)
+    clearTimeout(_nameTimer);
+    nameEl.placeholder = '查詢中…';
+    _nameTimer = setTimeout(async () => {
+      if (nameEl.value) return;  // user typed something in the meantime
+      try {
+        const name = await StockPrice.fetchStockName(market, symbol);
+        if (name && !nameEl.value) {
+          nameEl.value = name;
+          nameEl.placeholder = '';
+        } else if (!name) {
+          nameEl.placeholder = market === 'TW' ? '例：台積電' : '例：Apple Inc.';
+        }
+      } catch {
+        nameEl.placeholder = market === 'TW' ? '例：台積電' : '例：Apple Inc.';
+      }
+    }, 500);
+  }
+
+  function _onTradeSymbolInput(market) {
+    const symbol = document.getElementById('trade-symbol')?.value.trim().toUpperCase();
+    if (!symbol) return;
+    const nameEl = document.getElementById('trade-name');
+    _lookupStockName(market, symbol, nameEl);
   }
 
   function _updateTradePreview() {
@@ -516,17 +565,9 @@ const Modal = (() => {
 
   function _onDivSymbolInput(market) {
     const symbol = document.getElementById('div-symbol')?.value.trim().toUpperCase();
-    if (!symbol || symbol.length < 1) return;
+    if (!symbol) return;
     const nameEl = document.getElementById('div-name');
-    if (!nameEl || nameEl.value) return; // don't overwrite manual entry
-
-    // Search current holdings first, then all past trades
-    const holdings = Store.getHoldings(market);
-    const holding  = holdings.find(h => h.symbol === symbol);
-    if (holding) { nameEl.value = holding.name; return; }
-
-    const trade = Store.getStockTrades(market).find(t => t.symbol === symbol);
-    if (trade) nameEl.value = trade.name;
+    _lookupStockName(market, symbol, nameEl);
   }
 
   function _saveDiv(market, existingId) {
@@ -930,13 +971,8 @@ const Modal = (() => {
   function _onDcaSymbolInput(market) {
     const symbol = document.getElementById('dca-symbol')?.value.trim().toUpperCase();
     if (!symbol) return;
-    // Auto-fill name from existing holdings
-    const holdings = Store.getHoldings(market);
-    const match = holdings.find(h => h.symbol === symbol);
-    if (match) {
-      const nameEl = document.getElementById('dca-name');
-      if (nameEl && !nameEl.value) nameEl.value = match.name;
-    }
+    const nameEl = document.getElementById('dca-name');
+    _lookupStockName(market, symbol, nameEl);
   }
 
   function _onDcaBankChange() {
@@ -1255,7 +1291,7 @@ const Modal = (() => {
     openTransaction, _onTypeChange, _onCurrencyChange, _calcFX, _saveTx,
     _onPaymentChange, _onPaymentBankChange,
     openExchangeRates, _resetExchangeRates, _saveExchangeRates,
-    openStockTrade, _updateTradePreview, _saveTrade,
+    openStockTrade, _onTradeSymbolInput, _updateTradePreview, _saveTrade,
     openDividend, _onDivSymbolInput, _saveDiv,
     openImport, _doImport,
     openBank, _saveBank,

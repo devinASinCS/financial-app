@@ -112,6 +112,30 @@ const StockPrice = (() => {
   }
 
   /**
+   * Fetch the display name for a single stock symbol.
+   * Returns a string name, or null if not found.
+   * Uses Yahoo Finance v8 chart API directly (no worker required).
+   */
+  async function fetchStockName(market, symbol) {
+    if (!symbol) return null;
+    const suffixes = market === 'TW' ? ['.TW', '.TWO'] : [''];
+    for (const suffix of suffixes) {
+      try {
+        const yahooSym = symbol + suffix;
+        const url = `https://query2.finance.yahoo.com/v8/finance/chart/${yahooSym}?interval=1d&range=1d`;
+        const r = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (!r.ok) continue;
+        const json = await r.json();
+        const meta = json.chart?.result?.[0]?.meta;
+        if (!meta) continue;
+        const name = meta.longName || meta.shortName;
+        if (name) return name;
+      } catch { continue; }
+    }
+    return null;
+  }
+
+  /**
    * Whether the cached price for `symbol` is considered stale.
    * Always returns true if no price has been fetched yet.
    */
@@ -141,5 +165,5 @@ const StockPrice = (() => {
     }
   }
 
-  return { fetchPrices, fetchTWUpcomingDividends, isCacheStale, isMarketOpen };
+  return { fetchPrices, fetchStockName, fetchTWUpcomingDividends, isCacheStale, isMarketOpen };
 })();
