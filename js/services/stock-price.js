@@ -127,7 +127,21 @@ const StockPrice = (() => {
       } catch {}
     }
 
-    // Direct Yahoo Finance fallback
+    // For TW stocks, try TWSE/TPEX MIS API for Chinese names
+    if (market === 'TW') {
+      for (const ex of ['tse', 'otc']) {
+        try {
+          const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${ex}_${symbol}.tw&json=1&delay=0`;
+          const r = await fetch(url, { headers: { Accept: 'application/json' } });
+          if (!r.ok) continue;
+          const json = await r.json();
+          const name = json.msgArray?.[0]?.nf || json.msgArray?.[0]?.n;
+          if (name) return name;
+        } catch { continue; }
+      }
+    }
+
+    // Yahoo Finance fallback (English for TW, primary for US)
     const suffixes = market === 'TW' ? ['.TW', '.TWO'] : [''];
     for (const suffix of suffixes) {
       try {
@@ -138,9 +152,7 @@ const StockPrice = (() => {
         const json = await r.json();
         const meta = json.chart?.result?.[0]?.meta;
         if (!meta) continue;
-        const name = market === 'TW'
-          ? (meta.shortName || meta.longName)
-          : (meta.longName || meta.shortName);
+        const name = meta.longName || meta.shortName;
         if (name) return name;
       } catch { continue; }
     }
