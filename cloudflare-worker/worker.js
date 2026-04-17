@@ -73,6 +73,13 @@ export default {
         return jsonResp({ ok: true, dividends });
       }
 
+      if (action === 'stockName') {
+        const { market, symbol } = body;
+        if (!symbol) return jsonResp({ ok: false, error: 'symbol required' }, 400);
+        const name = await fetchStockName(market, symbol);
+        return jsonResp({ ok: !!name, name });
+      }
+
       return jsonResp({ ok: false, error: `Unknown action: ${action}` }, 400);
     } catch (e) {
       return jsonResp({ ok: false, error: e.message }, 500);
@@ -225,6 +232,28 @@ async function fetchStockPrices(market, symbols) {
   }
 
   return prices;
+}
+
+/**
+ * Fetch the display name for a single stock symbol from Yahoo Finance.
+ * Returns the name string or null if not found.
+ */
+async function fetchStockName(market, symbol) {
+  const suffixes = market === 'TW' ? ['.TW', '.TWO'] : [''];
+  for (const suffix of suffixes) {
+    try {
+      const yahooSym = symbol + suffix;
+      const url = `https://query2.finance.yahoo.com/v8/finance/chart/${yahooSym}?interval=1d&range=1d`;
+      const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (!r.ok) continue;
+      const json = await r.json();
+      const meta = json.chart?.result?.[0]?.meta;
+      if (!meta) continue;
+      const name = meta.longName || meta.shortName;
+      if (name) return name;
+    } catch { continue; }
+  }
+  return null;
 }
 
 /**

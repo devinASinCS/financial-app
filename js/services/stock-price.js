@@ -118,6 +118,16 @@ const StockPrice = (() => {
    */
   async function fetchStockName(market, symbol) {
     if (!symbol) return null;
+
+    // Prefer worker proxy (avoids browser CORS issues)
+    if (_workerUrl()) {
+      try {
+        const data = await _postWorker('stockName', { market, symbol });
+        if (data.name) return data.name;
+      } catch {}
+    }
+
+    // Direct Yahoo Finance fallback
     const suffixes = market === 'TW' ? ['.TW', '.TWO'] : [''];
     for (const suffix of suffixes) {
       try {
