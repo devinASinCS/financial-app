@@ -247,6 +247,7 @@ const Store = (() => {
 
     for (const bankSnapshot of getBanks()) {
       for (const card of (bankSnapshot.creditCards || [])) {
+        if (card.type === 'debit') continue;
         if (todayDay < card.autoDebitDay) continue;
         const logKey = `${bankSnapshot.id}_${card.id}_${monthKey}`;
         if (log[logKey]) continue;
@@ -297,6 +298,7 @@ const Store = (() => {
 
     for (const bank of getBanks()) {
       for (const card of (bank.creditCards || [])) {
+        if (card.type === 'debit') continue;
         const logKey = `${bank.id}_${card.id}_${monthKey}`;
         if (log[logKey]) continue;
 
