@@ -52,21 +52,39 @@ const Store = (() => {
   // ── Transaction CRUD ────────────────────────────────────────────
   function getTransactions() { return load(KEYS.transactions); }
 
+  // Adjust bank balance when a bank_transfer transaction is added/removed.
+  // Pass reverse=true to undo the effect (for edit/delete).
+  function _adjustBankForTransfer(tx, reverse) {
+    if (!tx || tx.paymentMethod !== 'bank_transfer' || !tx.bankId) return;
+    const bank = getBanks().find(b => b.id === tx.bankId);
+    if (!bank) return;
+    let delta = tx.type === 'expense' ? -(tx.amount) : tx.amount;
+    if (reverse) delta = -delta;
+    updateBank(bank.id, { balance: (bank.balance || 0) + delta });
+  }
+
   function addTransaction(tx) {
     const list = getTransactions();
     const item = { id: uid(), createdAt: new Date().toISOString(), ...tx };
     list.unshift(item);
     save(KEYS.transactions, list);
+    _adjustBankForTransfer(item, false);
     return item;
   }
 
   function updateTransaction(id, updates) {
+    const old = getTransactions().find(t => t.id === id);
+    _adjustBankForTransfer(old, true);               // reverse old effect
     const list = getTransactions().map(t => t.id === id ? { ...t, ...updates } : t);
     save(KEYS.transactions, list);
+    const newTx = list.find(t => t.id === id);
+    _adjustBankForTransfer(newTx, false);            // apply new effect
   }
 
   function deleteTransaction(id) {
+    const tx = getTransactions().find(t => t.id === id);
     save(KEYS.transactions, getTransactions().filter(t => t.id !== id));
+    _adjustBankForTransfer(tx, true);                // reverse effect
   }
 
   // ── Stock Trade CRUD ────────────────────────────────────────────
