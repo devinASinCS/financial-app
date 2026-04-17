@@ -502,7 +502,7 @@ const Modal = (() => {
 
   // ── Dividend Modal ──────────────────────────────────────────────
   function openDividend(market, existing = null, onSave) {
-    const isEdit = !!existing;
+    const isEdit = !!(existing && existing.id);
     const isTW   = market === 'TW';
     const d = existing || {
       date: Utils.today(), symbol: '', name: '',
@@ -671,7 +671,7 @@ const Modal = (() => {
 
   // ── Bank Modal ──────────────────────────────────────────────────
   function openBank(existing = null, onSave) {
-    const isEdit = !!existing;
+    const isEdit = !!(existing && existing.id);
     const b = existing || { name: '', balance: 0 };
 
     open(`
@@ -716,7 +716,7 @@ const Modal = (() => {
 
   // ── Credit Card Modal ───────────────────────────────────────────
   function openCreditCard(bankId, bankName, existing = null, onSave) {
-    const isEdit = !!existing;
+    const isEdit = !!(existing && existing.id);
     const c = existing || { name: '', limit: 0, statementDay: 25, autoDebitDay: 15 };
 
     open(`
@@ -778,7 +778,7 @@ const Modal = (() => {
 
   // ── Subscription Modal ──────────────────────────────────────────
   function openSubscription(existing = null, onSave) {
-    const isEdit = !!existing;
+    const isEdit = !!(existing && existing.id);
     const s = existing || {
       name: '', currency: 'USD', amount: '', billingDay: 1,
       bankId: '', cardId: '', active: true,
@@ -889,7 +889,7 @@ const Modal = (() => {
 
   // ── DCA Plan Modal ──────────────────────────────────────────────
   function openDcaPlan(market, existing = null, onSave) {
-    const isEdit = !!existing;
+    const isEdit = !!(existing && existing.id);
     const isTW = market === 'TW';
     const p = existing || {
       symbol: '', name: '', monthlyAmount: '', executionDay: 1,
@@ -1043,7 +1043,7 @@ const Modal = (() => {
   ];
 
   function openEvent(existing = null, onSave) {
-    const isEdit = !!existing;
+    const isEdit = !!(existing && existing.id);
     const e = existing || {
       name: '', icon: '📋', color: '#3B82F6',
       startDate: '', endDate: '', note: '',
