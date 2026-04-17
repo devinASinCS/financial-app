@@ -337,7 +337,7 @@ const Modal = (() => {
 
   // ── Stock Trade Modal ───────────────────────────────────────────
   function openStockTrade(market, existing = null, onSave) {
-    const isEdit = !!existing;
+    const isEdit = !!(existing && existing.id);
     const isTW = market === 'TW';
     const t = existing || {
       date: Utils.today(), symbol: '', name: '', action: 'buy',
