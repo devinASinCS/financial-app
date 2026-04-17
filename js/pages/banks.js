@@ -40,12 +40,29 @@ const PageBanks = (() => {
 
     wrap.innerHTML = banks.map(bank => {
       const cards = bank.creditCards || [];
-      const totalLimit = cards.reduce((s, c) => s + (c.limit || 0), 0);
+      const totalLimit = cards.filter(c => !c.type || c.type === 'credit').reduce((s, c) => s + (c.limit || 0), 0);
 
       const cardsHtml = cards.length === 0
-        ? `<div style="color:#94A3B8;font-size:13px;padding:12px 0;">尚未新增信用卡</div>`
+        ? `<div style="color:#94A3B8;font-size:13px;padding:12px 0;">尚未新增卡片</div>`
         : cards.map(card => {
-            // Current month credit card spending for this card
+            const isDebit = card.type === 'debit';
+            if (isDebit) {
+              return `
+                <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;margin-bottom:8px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                      <div style="font-weight:600;font-size:14px;margin-bottom:2px;">🏧 ${card.name}</div>
+                      <div style="font-size:12px;color:#64748B;">簽帳金融卡</div>
+                    </div>
+                    <div style="display:flex;gap:6px;">
+                      <button class="btn btn-secondary btn-sm" onclick="PageBanks.openEditCard('${bank.id}','${card.id}')">編輯</button>
+                      <button class="btn btn-danger btn-sm" onclick="PageBanks.delCard('${bank.id}','${card.id}')">刪除</button>
+                    </div>
+                  </div>
+                </div>`;
+            }
+
+            // Credit card — show usage bar
             const monthSpend = allTx.filter(t =>
               t.type === 'expense' &&
               t.paymentMethod === 'credit_card' &&
@@ -100,7 +117,7 @@ const PageBanks = (() => {
                   調整餘額
                 </button>
               </div>
-              ${cards.length > 0 && totalLimit > 0 ? `<div style="font-size:12px;color:#64748B;margin-top:2px;">${cards.length} 張信用卡 · 總額度 ${Utils.formatTWD(totalLimit)}</div>` : ''}
+              ${cards.length > 0 ? `<div style="font-size:12px;color:#64748B;margin-top:2px;">${cards.length} 張卡片${totalLimit > 0 ? ' · 信用總額度 ' + Utils.formatTWD(totalLimit) : ''}</div>` : ''}
             </div>
             <div style="display:flex;gap:8px;">
               <button class="btn btn-secondary btn-sm" onclick="PageBanks.openEditBank('${bank.id}')">編輯</button>
@@ -111,8 +128,8 @@ const PageBanks = (() => {
           <!-- Credit Cards -->
           <div style="border-top:1px solid #E2E8F0;padding-top:14px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <div style="font-size:13px;font-weight:600;color:#475569;">信用卡</div>
-              <button class="btn btn-secondary btn-sm" onclick="PageBanks.openAddCard('${bank.id}', '${bank.name}')">＋ 新增信用卡</button>
+              <div style="font-size:13px;font-weight:600;color:#475569;">卡片</div>
+              <button class="btn btn-secondary btn-sm" onclick="PageBanks.openAddCard('${bank.id}', '${bank.name}')">＋ 新增卡片</button>
             </div>
             ${cardsHtml}
           </div>

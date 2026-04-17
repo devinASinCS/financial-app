@@ -409,24 +409,69 @@ const PageTWStocks = (() => {
     const grandTotal = grouped.reduce((s, g) => s + g.cashTotal, 0);
 
     container.innerHTML = `
-      <!-- Per-stock summary cards -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px;">
-        ${grouped.map(g => `
-          <div class="card" style="border-left:4px solid #8B5CF6;padding:14px 16px;">
-            <div style="font-weight:700;color:#1D4ED8;font-size:15px;">${g.symbol}</div>
-            <div style="font-size:12px;color:#6B7280;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${g.name}</div>
-            <div style="font-size:20px;font-weight:700;color:#8B5CF6;">${Utils.formatTWD(g.cashTotal)}</div>
-            ${g.stockShares > 0 ? `<div style="font-size:12px;color:#3B82F6;margin-top:2px;">+ ${g.stockShares} 股配股</div>` : ''}
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
-              <div style="font-size:11px;color:#9CA3AF;">${g.count} 次紀錄</div>
-              <button class="btn btn-primary btn-sm" onclick="PageTWStocks.openAddDividendFor('${g.symbol}')">＋ 新增</button>
-            </div>
-          </div>`).join('')}
-        <div class="card" style="border-left:4px solid #10B981;padding:14px 16px;background:#F0FDF4;">
-          <div style="font-size:12px;color:#6B7280;margin-bottom:8px;">全部合計</div>
-          <div style="font-size:20px;font-weight:700;color:#059669;">${Utils.formatTWD(grandTotal)}</div>
-          <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">${divs.length} 筆紀錄 · ${grouped.length} 檔股票</div>
+      <!-- Grand total summary -->
+      <div class="card" style="border-left:4px solid #10B981;padding:14px 16px;background:#F0FDF4;margin-bottom:12px;display:flex;align-items:center;gap:24px;">
+        <div>
+          <div style="font-size:12px;color:#6B7280;">累計股利總計</div>
+          <div style="font-size:22px;font-weight:700;color:#059669;">${Utils.formatTWD(grandTotal)}</div>
         </div>
+        <div style="font-size:12px;color:#9CA3AF;">${divs.length} 筆紀錄 · ${grouped.length} 檔股票</div>
+      </div>
+
+      <!-- Per-stock expandable cards -->
+      <div style="margin-bottom:20px;">
+        ${grouped.map(g => {
+          const symbolDivs = divs.filter(d => d.symbol === g.symbol).sort((a, b) => b.date.localeCompare(a.date));
+          const detailRows = symbolDivs.map(d => `
+            <tr>
+              <td style="white-space:nowrap;">${Utils.formatDate(d.date)}</td>
+              <td class="text-right" style="color:#8B5CF6;font-weight:600;">${d.cashTotal > 0 ? Utils.formatTWD(d.cashTotal) : '-'}</td>
+              <td class="text-right" style="color:#3B82F6;">${d.stockShares > 0 ? d.stockShares + ' 股' : '-'}</td>
+              <td style="font-size:12px;color:#6B7280;">${d.note || '-'}</td>
+              <td class="text-center">
+                <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();PageTWStocks.openEditDividend('${d.id}')">編輯</button>
+                <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="event.stopPropagation();PageTWStocks.delDividend('${d.id}')">刪除</button>
+              </td>
+            </tr>`).join('');
+          return `
+            <div class="card" style="margin-bottom:8px;padding:14px 16px;cursor:pointer;border-left:4px solid #8B5CF6;" onclick="PageTWStocks.toggleDivGroup('${g.symbol}')">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="min-width:60px;">
+                  <div style="font-weight:700;color:#1D4ED8;font-size:15px;">${g.symbol}</div>
+                  <div style="font-size:12px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">${g.name}</div>
+                </div>
+                <div style="flex:1;">
+                  <div style="font-size:18px;font-weight:700;color:#8B5CF6;">${Utils.formatTWD(g.cashTotal)}</div>
+                  ${g.stockShares > 0 ? `<div style="font-size:12px;color:#3B82F6;">+ ${g.stockShares} 股配股</div>` : ''}
+                </div>
+                <div style="font-size:11px;color:#9CA3AF;white-space:nowrap;">${g.count} 次紀錄</div>
+                <span id="div-arrow-${g.symbol}" style="color:#9CA3AF;font-size:12px;margin:0 4px;">▼</span>
+                <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();PageTWStocks.openAddDividendFor('${g.symbol}')">＋ 新增</button>
+              </div>
+              <div id="div-detail-${g.symbol}" style="display:none;margin-top:12px;border-top:1px solid #E2E8F0;padding-top:10px;overflow-x:auto;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>日期</th>
+                      <th class="text-right">現金股利</th>
+                      <th class="text-right">配股</th>
+                      <th>備註</th>
+                      <th class="text-center">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>${detailRows}</tbody>
+                  <tfoot>
+                    <tr style="font-weight:600;background:#F8FAFC;">
+                      <td>合計</td>
+                      <td class="text-right" style="color:#8B5CF6;">${Utils.formatTWD(g.cashTotal)}</td>
+                      <td class="text-right" style="color:#3B82F6;">${g.stockShares > 0 ? g.stockShares + ' 股' : '-'}</td>
+                      <td colspan="2"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>`;
+        }).join('')}
       </div>
 
       <!-- Full history table -->
@@ -671,6 +716,15 @@ const PageTWStocks = (() => {
     if (plan) Modal.openDcaExecute(plan, _refresh);
   }
 
+  function toggleDivGroup(symbol) {
+    const detail = document.getElementById('div-detail-' + symbol);
+    const arrow  = document.getElementById('div-arrow-' + symbol);
+    if (!detail) return;
+    const open = detail.style.display === 'none';
+    detail.style.display = open ? '' : 'none';
+    if (arrow) arrow.textContent = open ? '▲' : '▼';
+  }
+
   function _refresh() {
     render();
   }
@@ -720,6 +774,7 @@ const PageTWStocks = (() => {
     openAddDividend, openAddDividendFor, openEditDividend, delDividend,
     openImport,
     openAddDca, openEditDca, delDca, toggleDca, executeDca,
+    toggleDivGroup,
     refreshPrices,
   };
 })();

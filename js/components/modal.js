@@ -717,32 +717,49 @@ const Modal = (() => {
   // ── Credit Card Modal ───────────────────────────────────────────
   function openCreditCard(bankId, bankName, existing = null, onSave) {
     const isEdit = !!(existing && existing.id);
-    const c = existing || { name: '', limit: 0, statementDay: 25, autoDebitDay: 15 };
+    const c = existing || { name: '', type: 'credit', limit: 0, statementDay: 25, autoDebitDay: 15 };
+    const cardType = c.type || 'credit';
+    const isDebit = cardType === 'debit';
 
     open(`
       <div class="modal-header">
-        <span class="modal-title">${isEdit ? '編輯信用卡' : '新增信用卡'} — ${bankName}</span>
+        <span class="modal-title">${isEdit ? '編輯卡片' : '新增卡片'} — ${bankName}</span>
         <button class="modal-close" onclick="Modal.close()">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">信用卡名稱</label>
-          <input type="text" id="card-name" class="form-input" placeholder="例：玉山 U Bear Card" value="${c.name}">
+          <label class="form-label">卡片類型</label>
+          <div style="display:flex;gap:16px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="radio" name="card-type" value="credit" ${!isDebit ? 'checked' : ''} onchange="Modal._onCardTypeChange()">
+              <span>💳 信用卡</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="radio" name="card-type" value="debit" ${isDebit ? 'checked' : ''} onchange="Modal._onCardTypeChange()">
+              <span>🏧 簽帳金融卡</span>
+            </label>
+          </div>
         </div>
         <div class="form-group">
-          <label class="form-label">信用額度 (NT$)</label>
-          <input type="number" id="card-limit" class="form-input" placeholder="0" value="${c.limit || ''}" step="1000" min="0">
+          <label class="form-label">卡片名稱</label>
+          <input type="text" id="card-name" class="form-input" placeholder="例：玉山 U Bear Card" value="${c.name}">
         </div>
-        <div class="grid-2">
+        <div id="card-credit-fields" style="display:${isDebit ? 'none' : ''};">
           <div class="form-group">
-            <label class="form-label">結算日（每月幾號）</label>
-            <input type="number" id="card-statement-day" class="form-input" placeholder="25" value="${c.statementDay || 25}" min="1" max="31">
-            <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">帳單截止日</div>
+            <label class="form-label">信用額度 (NT$)</label>
+            <input type="number" id="card-limit" class="form-input" placeholder="0" value="${c.limit || ''}" step="1000" min="0">
           </div>
-          <div class="form-group">
-            <label class="form-label">自動扣款日（每月幾號）</label>
-            <input type="number" id="card-debit-day" class="form-input" placeholder="15" value="${c.autoDebitDay || 15}" min="1" max="31">
-            <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">從銀行帳戶自動扣款</div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">結算日（每月幾號）</label>
+              <input type="number" id="card-statement-day" class="form-input" placeholder="25" value="${c.statementDay || 25}" min="1" max="31">
+              <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">帳單截止日</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">自動扣款日（每月幾號）</label>
+              <input type="number" id="card-debit-day" class="form-input" placeholder="15" value="${c.autoDebitDay || 15}" min="1" max="31">
+              <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">從銀行帳戶自動扣款</div>
+            </div>
           </div>
         </div>
       </div>
@@ -755,17 +772,25 @@ const Modal = (() => {
     `, onSave);
   }
 
+  function _onCardTypeChange() {
+    const isDebit = document.querySelector('[name="card-type"]:checked')?.value === 'debit';
+    const fields = document.getElementById('card-credit-fields');
+    if (fields) fields.style.display = isDebit ? 'none' : '';
+  }
+
   function _saveCreditCard(bankId, existingId) {
-    const name         = document.getElementById('card-name').value.trim();
-    const limit        = parseFloat(document.getElementById('card-limit').value || 0);
-    const statementDay = parseInt(document.getElementById('card-statement-day').value || 25);
-    const autoDebitDay = parseInt(document.getElementById('card-debit-day').value || 15);
+    const name = document.getElementById('card-name').value.trim();
+    const type = document.querySelector('[name="card-type"]:checked')?.value || 'credit';
+    if (!name) { Utils.showToast('請填寫卡片名稱'); return; }
 
-    if (!name) { Utils.showToast('請填寫信用卡名稱'); return; }
-    if (statementDay < 1 || statementDay > 31) { Utils.showToast('結算日請填 1–31'); return; }
-    if (autoDebitDay < 1 || autoDebitDay > 31) { Utils.showToast('扣款日請填 1–31'); return; }
-
-    const data = { name, limit, statementDay, autoDebitDay };
+    const data = { name, type };
+    if (type === 'credit') {
+      data.limit        = parseFloat(document.getElementById('card-limit').value || 0);
+      data.statementDay = parseInt(document.getElementById('card-statement-day').value || 25);
+      data.autoDebitDay = parseInt(document.getElementById('card-debit-day').value || 15);
+      if (data.statementDay < 1 || data.statementDay > 31) { Utils.showToast('結算日請填 1–31'); return; }
+      if (data.autoDebitDay < 1 || data.autoDebitDay > 31) { Utils.showToast('扣款日請填 1–31'); return; }
+    }
     if (existingId) {
       Store.updateCreditCard(bankId, existingId, data);
       Utils.showToast('已更新');
@@ -1298,7 +1323,7 @@ const Modal = (() => {
     openDividend, _onDivSymbolInput, _saveDiv,
     openImport, _doImport,
     openBank, _saveBank,
-    openCreditCard, _saveCreditCard,
+    openCreditCard, _onCardTypeChange, _saveCreditCard,
     openSubscription, _onSubBankChange, _saveSubscription,
     openDcaPlan, _onDcaSymbolInput, _onDcaBankChange, _saveDcaPlan,
     openDcaExecute, _calcDcaShares, _executeDca,
