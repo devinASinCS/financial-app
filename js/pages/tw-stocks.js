@@ -417,7 +417,10 @@ const PageTWStocks = (() => {
             <div style="font-size:12px;color:#6B7280;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${g.name}</div>
             <div style="font-size:20px;font-weight:700;color:#8B5CF6;">${Utils.formatTWD(g.cashTotal)}</div>
             ${g.stockShares > 0 ? `<div style="font-size:12px;color:#3B82F6;margin-top:2px;">+ ${g.stockShares} 股配股</div>` : ''}
-            <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">${g.count} 次紀錄</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
+              <div style="font-size:11px;color:#9CA3AF;">${g.count} 次紀錄</div>
+              <button class="btn btn-primary btn-sm" onclick="PageTWStocks.openAddDividendFor('${g.symbol}')">＋ 新增</button>
+            </div>
           </div>`).join('')}
         <div class="card" style="border-left:4px solid #10B981;padding:14px 16px;background:#F0FDF4;">
           <div style="font-size:12px;color:#6B7280;margin-bottom:8px;">全部合計</div>
