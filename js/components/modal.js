@@ -457,8 +457,9 @@ const Modal = (() => {
 
   function _onTradeSymbolInput(market) {
     const symbol = document.getElementById('trade-symbol')?.value.trim().toUpperCase();
-    if (!symbol) return;
     const nameEl = document.getElementById('trade-name');
+    if (!symbol) { if (nameEl) nameEl.value = ''; return; }
+    if (nameEl) nameEl.value = '';
     _lookupStockName(market, symbol, nameEl);
   }
 
@@ -565,8 +566,9 @@ const Modal = (() => {
 
   function _onDivSymbolInput(market) {
     const symbol = document.getElementById('div-symbol')?.value.trim().toUpperCase();
-    if (!symbol) return;
     const nameEl = document.getElementById('div-name');
+    if (!symbol) { if (nameEl) nameEl.value = ''; return; }
+    if (nameEl) nameEl.value = '';
     _lookupStockName(market, symbol, nameEl);
   }
 
@@ -970,8 +972,9 @@ const Modal = (() => {
 
   function _onDcaSymbolInput(market) {
     const symbol = document.getElementById('dca-symbol')?.value.trim().toUpperCase();
-    if (!symbol) return;
     const nameEl = document.getElementById('dca-name');
+    if (!symbol) { if (nameEl) nameEl.value = ''; return; }
+    if (nameEl) nameEl.value = '';
     _lookupStockName(market, symbol, nameEl);
   }
 

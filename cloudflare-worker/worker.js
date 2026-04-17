@@ -249,7 +249,9 @@ async function fetchStockName(market, symbol) {
       const json = await r.json();
       const meta = json.chart?.result?.[0]?.meta;
       if (!meta) continue;
-      const name = meta.longName || meta.shortName;
+      const name = market === 'TW'
+        ? (meta.shortName || meta.longName)
+        : (meta.longName || meta.shortName);
       if (name) return name;
     } catch { continue; }
   }
