@@ -41,6 +41,10 @@ const Store = (() => {
   }
   function save(key, data) {
     localStorage.setItem(key, JSON.stringify(data));
+    localStorage.setItem('fm_last_modified', new Date().toISOString());
+    if (typeof NotionSync !== 'undefined' && NotionSync.scheduleAutoSave) {
+      NotionSync.scheduleAutoSave();
+    }
   }
   function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);

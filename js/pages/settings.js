@@ -65,6 +65,14 @@ const PageSettings = (() => {
     setTimeout(() => PageSettings.render(), 300);
   }
 
+  // ── Notion: toggle auto-sync ──────────────────────────────────────
+  function toggleAutoSync(enabled) {
+    NotionSync.setAutoSync(enabled);
+    render();
+    if (enabled) Utils.showToast('✅ 自動同步已開啟');
+    else Utils.showToast('自動同步已關閉');
+  }
+
   // ── Notion: save worker URL ───────────────────────────────────────
   function saveWorkerUrl() {
     const url = (document.getElementById('worker-url-input')?.value || '').trim();
@@ -138,10 +146,11 @@ const PageSettings = (() => {
     const sizeKB = (totalBytes / 1024).toFixed(1);
 
     // Notion sync status
-    const workerUrl  = NotionSync.getWorkerUrl();
-    const lastSync   = NotionSync.getLastSync();
-    const lastDir    = NotionSync.getLastSyncDir();
-    const configured = NotionSync.isConfigured();
+    const workerUrl   = NotionSync.getWorkerUrl();
+    const lastSync    = NotionSync.getLastSync();
+    const lastDir     = NotionSync.getLastSyncDir();
+    const configured  = NotionSync.isConfigured();
+    const autoSync    = NotionSync.isAutoSyncEnabled();
 
     let syncStatusHtml = '';
     if (lastSync) {
@@ -197,6 +206,9 @@ const PageSettings = (() => {
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
           <h3 class="section-title" style="margin:0;">Notion 雲端同步</h3>
           <span style="font-size:11px;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:12px;font-weight:600;">Beta</span>
+          <span id="sync-status-badge" style="font-size:11px;color:#6b7280;margin-left:auto;${lastSync ? '' : 'display:none'}">
+            ☁️ ${lastSync ? new Date(lastSync).toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'}) : ''}
+          </span>
         </div>
         <p style="font-size:14px;color:#6b7280;margin:8px 0 16px;">
           透過 Cloudflare Worker 將資料備份至 Notion，可跨裝置存取。
@@ -212,6 +224,31 @@ const PageSettings = (() => {
               value="${workerUrl.replace(/"/g, '&quot;')}">
             <button class="btn-secondary" style="white-space:nowrap;" onclick="PageSettings.saveWorkerUrl()">儲存</button>
           </div>
+        </div>
+
+        <!-- Auto-sync toggle -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:12px;">
+          <div>
+            <div style="font-size:14px;font-weight:500;color:#111827;">自動同步</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px;">資料變更時自動上傳；開啟 App 時自動從雲端下載最新資料</div>
+          </div>
+          <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:12px;">
+            <input type="checkbox" ${autoSync ? 'checked' : ''} ${configured ? '' : 'disabled'}
+              onchange="PageSettings.toggleAutoSync(this.checked)"
+              style="opacity:0;width:0;height:0;">
+            <span style="
+              position:absolute;cursor:${configured ? 'pointer' : 'not-allowed'};
+              top:0;left:0;right:0;bottom:0;
+              background:${autoSync ? '#2563eb' : '#d1d5db'};
+              border-radius:24px;transition:.2s;
+            ">
+              <span style="
+                position:absolute;content:'';height:18px;width:18px;
+                left:${autoSync ? '23px' : '3px'};bottom:3px;
+                background:white;border-radius:50%;transition:.2s;
+              "></span>
+            </span>
+          </label>
         </div>
 
         <!-- Action buttons -->
@@ -251,6 +288,6 @@ const PageSettings = (() => {
   return {
     render,
     exportJSON, triggerImport, clearAllData,
-    saveWorkerUrl, testConnection, notionSave, notionLoad,
+    saveWorkerUrl, testConnection, notionSave, notionLoad, toggleAutoSync,
   };
 })();

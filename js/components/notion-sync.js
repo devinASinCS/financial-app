@@ -5,9 +5,10 @@
 const NotionSync = (() => {
 
   const KEYS = {
-    workerUrl: 'fm_notion_worker_url',
-    lastSync:  'fm_notion_last_sync',
+    workerUrl:   'fm_notion_worker_url',
+    lastSync:    'fm_notion_last_sync',
     lastSyncDir: 'fm_notion_last_sync_dir', // 'save' | 'load'
+    autoSync:    'fm_notion_auto_sync',
   };
 
   // ── Config ───────────────────────────────────────────────────────
@@ -23,6 +24,14 @@ const NotionSync = (() => {
     return getWorkerUrl().length > 0;
   }
 
+  function isAutoSyncEnabled() {
+    return localStorage.getItem(KEYS.autoSync) === 'true';
+  }
+
+  function setAutoSync(enabled) {
+    localStorage.setItem(KEYS.autoSync, enabled ? 'true' : 'false');
+  }
+
   function getLastSync() {
     return localStorage.getItem(KEYS.lastSync) || null;
   }
@@ -34,6 +43,54 @@ const NotionSync = (() => {
   function _recordSync(direction) {
     localStorage.setItem(KEYS.lastSync, new Date().toISOString());
     localStorage.setItem(KEYS.lastSyncDir, direction);
+  }
+
+  // ── Auto-save (debounced) ─────────────────────────────────────────
+  let _saveTimer = null;
+  let _isSyncing = false;
+
+  function scheduleAutoSave() {
+    if (!isConfigured() || !isAutoSyncEnabled()) return;
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(async () => {
+      if (_isSyncing) return;
+      _isSyncing = true;
+      try {
+        await save();
+        _updateSyncBadge();
+      } catch { /* silent fail — auto-sync is best-effort */ }
+      finally { _isSyncing = false; }
+    }, 3000);
+  }
+
+  // ── Sync on startup ───────────────────────────────────────────────
+  async function syncOnStart() {
+    if (!isConfigured() || !isAutoSyncEnabled()) return;
+    try {
+      const result = await _request({ action: 'load' });
+      if (!result.data || !result.data._savedAt) return;
+
+      const remoteTs = new Date(result.data._savedAt).getTime();
+      const localStr = localStorage.getItem('fm_last_modified');
+      if (localStr && new Date(localStr).getTime() >= remoteTs) return; // already up-to-date
+
+      Store.importData(result.data);
+      _recordSync('load');
+      _updateSyncBadge();
+      Utils.showToast('☁️ 已從雲端同步最新資料');
+      window.dispatchEvent(new Event('hashchange')); // re-render current page
+    } catch { /* silent fail — don't block startup */ }
+  }
+
+  function _updateSyncBadge() {
+    const el = document.getElementById('sync-status-badge');
+    if (!el) return;
+    const lastSync = getLastSync();
+    if (!lastSync) { el.style.display = 'none'; return; }
+    const d = new Date(lastSync);
+    const fmt = d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+    el.textContent = `☁️ ${fmt}`;
+    el.style.display = '';
   }
 
   // ── Core request ─────────────────────────────────────────────────
@@ -85,6 +142,8 @@ const NotionSync = (() => {
     isConfigured,
     getWorkerUrl, setWorkerUrl,
     getLastSync, getLastSyncDir,
+    isAutoSyncEnabled, setAutoSync,
+    scheduleAutoSave, syncOnStart,
     ping, save, load,
   };
 })();
