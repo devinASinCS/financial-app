@@ -30,6 +30,7 @@ const NotionSync = (() => {
 
   function setAutoSync(enabled) {
     localStorage.setItem(KEYS.autoSync, enabled ? 'true' : 'false');
+    if (enabled) startPolling(); else stopPolling();
   }
 
   function getLastSync() {
@@ -43,6 +44,36 @@ const NotionSync = (() => {
   function _recordSync(direction) {
     localStorage.setItem(KEYS.lastSync, new Date().toISOString());
     localStorage.setItem(KEYS.lastSyncDir, direction);
+  }
+
+  // ── Periodic pull polling ─────────────────────────────────────────
+  const POLL_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+  let _pollTimer = null;
+
+  function startPolling() {
+    stopPolling();
+    if (!isConfigured() || !isAutoSyncEnabled()) return;
+    _pollTimer = setInterval(async () => {
+      if (_isSyncing) return;
+      _isSyncing = true;
+      try {
+        const result = await _request({ action: 'load' });
+        if (!result.data || !result.data._savedAt) return;
+        const remoteTs = new Date(result.data._savedAt).getTime();
+        const localStr = localStorage.getItem('fm_last_modified');
+        if (localStr && new Date(localStr).getTime() >= remoteTs) return;
+        Store.importData(result.data);
+        _recordSync('load');
+        _updateSyncBadge();
+        Utils.showToast('☁️ 已從雲端同步最新資料');
+        window.dispatchEvent(new Event('hashchange'));
+      } catch { /* silent fail */ }
+      finally { _isSyncing = false; }
+    }, POLL_INTERVAL_MS);
+  }
+
+  function stopPolling() {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   }
 
   // ── Auto-save (debounced) ─────────────────────────────────────────
@@ -144,6 +175,7 @@ const NotionSync = (() => {
     getLastSync, getLastSyncDir,
     isAutoSyncEnabled, setAutoSync,
     scheduleAutoSave, syncOnStart,
+    startPolling, stopPolling,
     ping, save, load,
   };
 })();

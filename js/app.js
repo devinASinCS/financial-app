@@ -141,8 +141,8 @@
     // Run auto-processing after initial render (non-blocking)
     setTimeout(() => runAutoProcessing(), 500);
 
-    // Sync from cloud if remote data is newer (non-blocking)
-    setTimeout(() => NotionSync.syncOnStart(), 1500);
+    // Sync from cloud if remote data is newer (non-blocking), then start polling
+    setTimeout(() => NotionSync.syncOnStart().then(() => NotionSync.startPolling()), 1500);
   }
 
   if (document.readyState === 'loading') {
