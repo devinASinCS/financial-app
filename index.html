@@ -3,38 +3,66 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>財務管理系統</title>
+  <title>Cashio</title>
+
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#111827">
+  <meta name="theme-color" content="#065F46">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="財務管理">
+  <meta name="apple-mobile-web-app-title" content="Cashio">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="css/app.css">
+
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            primary: '#3B82F6',
+            primary: '#10B981',
+            'primary-dark': '#059669',
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
           }
         }
       }
     }
   </script>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans">
+<body class="bg-slate-100 text-slate-800 font-sans">
 
-  <!-- Mobile Top Navigation (hidden on desktop) -->
-  <div id="mobile-nav">
-    <div class="mobile-header">
-      <h1>💰 財務管理</h1>
-      <span class="mobile-header-date" id="mobile-date"></span>
+  <!-- ── Mobile Top Bar (visible on mobile only) ───────────────────── -->
+  <div id="mobile-topbar">
+    <div class="topbar-inner">
+      <div class="topbar-brand">
+        <!-- Cashio inline SVG logo mark -->
+        <svg class="topbar-logo-mark" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="tl-bg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#34D399"/><stop offset="1" stop-color="#065F46"/>
+            </linearGradient>
+          </defs>
+          <rect width="40" height="40" rx="9" fill="url(#tl-bg)"/>
+          <path d="M 23,12 A 8.3,8.3 0 1,0 23,28" fill="none" stroke="white" stroke-width="5.6" stroke-linecap="round" opacity="0.95"/>
+          <line x1="16.7" y1="10" x2="16.7" y2="30" stroke="rgba(255,255,255,0.44)" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+        <span class="topbar-logo-text">Cashio</span>
+      </div>
+      <span class="topbar-date" id="mobile-date"></span>
     </div>
+  </div>
+
+  <!-- ── Mobile Bottom Navigation ─────────────────────────────────── -->
+  <div id="mobile-nav">
     <div class="mobile-nav-row" id="mobile-nav-row">
       <a href="#dashboard" class="mobile-nav-item" data-page="dashboard">
         <span class="nav-icon">📊</span><span>總覽</span>
@@ -63,13 +91,27 @@
     </div>
   </div>
 
-  <!-- Sidebar (desktop only) -->
-  <div id="sidebar" class="fixed top-0 left-0 h-full w-56 bg-gray-900 text-white flex flex-col z-10 shadow-xl">
-    <div class="px-5 py-5 border-b border-gray-700">
-      <h1 class="text-lg font-bold text-white">💰 財務管理</h1>
-      <p class="text-xs text-gray-400 mt-1">個人理財系統</p>
+  <!-- ── Sidebar (desktop only) ────────────────────────────────────── -->
+  <div id="sidebar" class="fixed top-0 left-0 h-full w-56 flex flex-col z-10">
+    <div class="sidebar-brand">
+      <!-- Cashio SVG logo mark (larger for sidebar) -->
+      <svg class="sidebar-logo-mark" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="sl-bg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#34D399"/><stop offset="1" stop-color="#065F46"/>
+          </linearGradient>
+        </defs>
+        <rect width="40" height="40" rx="9" fill="url(#sl-bg)"/>
+        <path d="M 23,12 A 8.3,8.3 0 1,0 23,28" fill="none" stroke="white" stroke-width="5.6" stroke-linecap="round" opacity="0.95"/>
+        <line x1="16.7" y1="10" x2="16.7" y2="30" stroke="rgba(255,255,255,0.44)" stroke-width="2.4" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <div class="sidebar-app-name">Cashio</div>
+        <div class="sidebar-app-sub">個人理財</div>
+      </div>
     </div>
-    <nav class="flex-1 py-4 overflow-y-auto">
+
+    <nav class="flex-1 py-3 overflow-y-auto">
       <a href="#dashboard" class="nav-link" data-page="dashboard">
         <span class="nav-icon">📊</span> 總覽
       </a>
@@ -79,52 +121,50 @@
       <a href="#events" class="nav-link" data-page="events">
         <span class="nav-icon">🎯</span> 活動記帳
       </a>
-      <div class="px-4 pt-4 pb-1">
-        <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold">帳戶管理</p>
-      </div>
+
+      <div class="nav-section-label">帳戶管理</div>
       <a href="#banks" class="nav-link" data-page="banks">
         <span class="nav-icon">🏦</span> 銀行設定
       </a>
       <a href="#subscriptions" class="nav-link" data-page="subscriptions">
         <span class="nav-icon">🔄</span> 訂閱管理
       </a>
-      <div class="px-4 pt-4 pb-1">
-        <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold">股票投資</p>
-      </div>
+
+      <div class="nav-section-label">股票投資</div>
       <a href="#tw-stocks" class="nav-link" data-page="tw-stocks">
         <span class="nav-icon">🇹🇼</span> 台股
       </a>
       <a href="#us-stocks" class="nav-link" data-page="us-stocks">
         <span class="nav-icon">🇺🇸</span> 美股
       </a>
-      <div class="px-4 pt-4 pb-1">
-        <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold">系統</p>
-      </div>
+
+      <div class="nav-section-label">系統</div>
       <a href="#settings" class="nav-link" data-page="settings">
         <span class="nav-icon">⚙️</span> 設定
       </a>
     </nav>
-    <div class="px-4 py-3 border-t border-gray-700">
-      <p class="text-xs text-gray-500" id="sidebar-date"></p>
+
+    <div class="sidebar-footer">
+      <p class="text-xs text-slate-500" id="sidebar-date"></p>
     </div>
   </div>
 
-  <!-- Main Content -->
+  <!-- ── Main Content ───────────────────────────────────────────────── -->
   <div class="ml-56 min-h-screen">
     <div id="app-content" class="p-6">
-      <div class="text-center py-20 text-gray-400">載入中...</div>
+      <div class="text-center py-20 text-slate-400">載入中...</div>
     </div>
   </div>
 
-  <!-- Modal Overlay -->
-  <div id="modal-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-    <div id="modal-container" class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+  <!-- ── Modal Overlay ─────────────────────────────────────────────── -->
+  <div id="modal-overlay" class="hidden fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4" style="backdrop-filter:blur(4px);">
+    <div id="modal-container" class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
       <div id="modal-content"></div>
     </div>
   </div>
 
-  <!-- Toast Notification -->
-  <div id="toast" class="hidden fixed bottom-6 right-6 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-xl z-50 text-sm transition-all"></div>
+  <!-- ── Toast ─────────────────────────────────────────────────────── -->
+  <div id="toast" class="hidden fixed z-50 text-sm transition-all"></div>
 
   <!-- Scripts (load order matters) -->
   <script src="js/store.js"></script>
@@ -143,13 +183,10 @@
   <script src="js/pages/settings.js"></script>
   <script src="js/app.js"></script>
 
-  <!-- Service Worker registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {
-          // SW registration failed (e.g. opening file:// directly) — app still works normally
-        });
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
       });
     }
   </script>

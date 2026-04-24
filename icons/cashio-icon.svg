@@ -1,0 +1,50 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="55%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#065F46"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="256" y1="0" x2="256" y2="340" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.22)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="114" fill="url(#bg)"/>
+
+  <!-- Top-half shine overlay -->
+  <rect width="512" height="300" rx="114" fill="url(#shine)"/>
+
+  <!-- Subtle coin rings -->
+  <circle cx="256" cy="262" r="148" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="2"/>
+  <circle cx="256" cy="262" r="122" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="2"/>
+
+  <!-- Bold C letterform (arc opening right) -->
+  <!-- Center at (256,262), radius 106: openings at (297,156) and (297,368) -->
+  <path d="M 297,156 A 106,106 0 1,0 297,368"
+        fill="none" stroke="white" stroke-width="72"
+        stroke-linecap="round" opacity="0.96" filter="url(#glow)"/>
+
+  <!-- Vertical stroke through C (like a cent/currency mark) -->
+  <line x1="214" y1="140" x2="214" y2="384"
+        stroke="rgba(255,255,255,0.45)" stroke-width="16" stroke-linecap="round"/>
+
+  <!-- Sparkle accent dots (upper right) -->
+  <circle cx="394" cy="112" r="14" fill="rgba(255,255,255,0.75)"/>
+  <circle cx="422" cy="148" r="9"  fill="rgba(255,255,255,0.50)"/>
+  <circle cx="370" cy="146" r="7"  fill="rgba(255,255,255,0.40)"/>
+
+  <!-- Bottom subtle label area -->
+  <rect x="0" y="420" width="512" height="92" rx="0" fill="rgba(0,0,0,0.08)"/>
+  <rect x="0" y="420" width="512" height="92" rx="0" fill="url(#shine)" opacity="0"/>
+  <text x="256" y="478" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+        font-size="52" font-weight="700" letter-spacing="6"
+        fill="rgba(255,255,255,0.85)">CASHIO</text>
+</svg>

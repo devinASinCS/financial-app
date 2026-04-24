@@ -1,13 +1,13 @@
 /**
- * Cloudflare Worker — Notion CORS proxy & backup storage
+ * Cashio Cloudflare Worker — sync proxy + stock data
  *
- * Environment variables (set in Cloudflare dashboard → Settings → Variables):
- *   NOTION_TOKEN       — Notion integration secret  (e.g. "secret_xxx")
- *   NOTION_PAGE_ID     — ID of the Notion page used as backup storage
+ * Environment variables (Cloudflare dashboard → Settings → Variables):
+ *   CASHIO_KV       — KV Namespace binding (recommended, zero subrequest limits)
+ *                     Create a KV namespace in Cloudflare Dashboard → Workers & Pages → KV,
+ *                     then bind it here as Variable name "CASHIO_KV".
  *
- * Deploy with:
- *   npx wrangler deploy
- * or paste this file into the Cloudflare Workers online editor.
+ *   NOTION_TOKEN    — (legacy) Notion integration secret, only used if CASHIO_KV is not bound
+ *   NOTION_PAGE_ID  — (legacy) Notion page ID, only used if CASHIO_KV is not bound
  */
 
 const CORS_HEADERS = {
@@ -17,12 +17,11 @@ const CORS_HEADERS = {
 };
 
 const NOTION_VERSION = '2022-06-28';
-const CHUNK_SIZE     = 1900;   // chars per Notion paragraph block (max 2000)
-const MAX_BLOCKS     = 100;    // Notion append limit per request
+const CHUNK_SIZE     = 1900;
+const MAX_BLOCKS     = 100;
 
 export default {
   async fetch(request, env) {
-    // ── CORS preflight ──────────────────────────────────────────────
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: CORS_HEADERS });
     }
@@ -42,21 +41,22 @@ export default {
 
     try {
       if (action === 'save') {
-        await saveToNotion(data, env);
+        await saveData(data, env);
         return jsonResp({ ok: true, savedAt: new Date().toISOString() });
       }
 
       if (action === 'load') {
-        const loaded = await loadFromNotion(env);
+        const loaded = await loadData(env);
         return jsonResp({ ok: true, data: loaded });
       }
 
       if (action === 'ping') {
-        // Simple connectivity test — verify env vars are set
-        if (!env.NOTION_TOKEN || !env.NOTION_PAGE_ID) {
-          return jsonResp({ ok: false, error: 'Worker env vars not configured' });
+        const hasKV     = !!env.CASHIO_KV;
+        const hasNotion = !!(env.NOTION_TOKEN && env.NOTION_PAGE_ID);
+        if (!hasKV && !hasNotion) {
+          return jsonResp({ ok: false, error: 'No storage configured. Bind CASHIO_KV or set NOTION_TOKEN + NOTION_PAGE_ID.' });
         }
-        return jsonResp({ ok: true, message: 'Worker is reachable' });
+        return jsonResp({ ok: true, message: 'Worker is reachable', storage: hasKV ? 'kv' : 'notion' });
       }
 
       if (action === 'stockPrices') {
@@ -87,7 +87,33 @@ export default {
   },
 };
 
-// ── Helpers ──────────────────────────────────────────────────────────
+// ── Storage: KV (primary) or Notion blocks (legacy fallback) ──────────
+
+async function saveData(data, env) {
+  const payload = JSON.stringify({ ...data, _savedAt: new Date().toISOString() });
+
+  if (env.CASHIO_KV) {
+    // KV: single put, zero subrequests — recommended
+    await env.CASHIO_KV.put('backup', payload);
+    return;
+  }
+
+  // Legacy: Notion blocks (may hit subrequest limits if data is large)
+  await saveToNotionBlocks(data, env);
+}
+
+async function loadData(env) {
+  if (env.CASHIO_KV) {
+    const raw = await env.CASHIO_KV.get('backup');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  }
+
+  // Legacy: Notion blocks
+  return loadFromNotionBlocks(env);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────
 
 function jsonResp(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -100,9 +126,9 @@ async function notionFetch(path, method, body, env) {
   const res = await fetch(`https://api.notion.com/v1${path}`, {
     method,
     headers: {
-      'Authorization':   `Bearer ${env.NOTION_TOKEN}`,
-      'Content-Type':    'application/json',
-      'Notion-Version':  NOTION_VERSION,
+      'Authorization':  `Bearer ${env.NOTION_TOKEN}`,
+      'Content-Type':   'application/json',
+      'Notion-Version': NOTION_VERSION,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
@@ -111,7 +137,6 @@ async function notionFetch(path, method, body, env) {
   catch { throw new Error(`Notion API error (${res.status}): ${text.slice(0, 200)}`); }
 }
 
-// Fetch ALL block children (handles pagination)
 async function getAllBlocks(pageId, env) {
   const blocks = [];
   let cursor;
@@ -125,25 +150,27 @@ async function getAllBlocks(pageId, env) {
   return blocks;
 }
 
-// ── Save ─────────────────────────────────────────────────────────────
+// ── Legacy Notion block storage ───────────────────────────────────────
 
-async function saveToNotion(data, env) {
-  const pageId = env.NOTION_PAGE_ID;
+async function saveToNotionBlocks(data, env) {
+  if (!env.NOTION_TOKEN || !env.NOTION_PAGE_ID) {
+    throw new Error('NOTION_TOKEN and NOTION_PAGE_ID are required when CASHIO_KV is not bound');
+  }
 
-  // 1. Delete (archive) all existing blocks
+  const pageId  = env.NOTION_PAGE_ID;
   const existing = await getAllBlocks(pageId, env);
+
+  // Delete existing blocks (each is a separate subrequest — use KV to avoid this)
   for (const block of existing) {
     await notionFetch(`/blocks/${block.id}`, 'DELETE', undefined, env);
   }
 
-  // 2. Chunk the JSON string
   const json   = JSON.stringify({ ...data, _savedAt: new Date().toISOString() });
   const chunks = [];
   for (let i = 0; i < json.length; i += CHUNK_SIZE) {
     chunks.push(json.slice(i, i + CHUNK_SIZE));
   }
 
-  // 3. Append in batches of MAX_BLOCKS
   for (let i = 0; i < chunks.length; i += MAX_BLOCKS) {
     const batch = chunks.slice(i, i + MAX_BLOCKS).map(chunk => ({
       object: 'block',
@@ -157,13 +184,29 @@ async function saveToNotion(data, env) {
   }
 }
 
+async function loadFromNotionBlocks(env) {
+  if (!env.NOTION_TOKEN || !env.NOTION_PAGE_ID) return null;
+
+  const pageId = env.NOTION_PAGE_ID;
+  const blocks = await getAllBlocks(pageId, env);
+
+  if (blocks.length === 0) return null;
+
+  const json = blocks
+    .filter(b => b.type === 'paragraph')
+    .map(b =>
+      (b.paragraph.rich_text || [])
+        .map(rt => rt.plain_text ?? rt.text?.content ?? '')
+        .join('')
+    )
+    .join('');
+
+  if (!json) return null;
+  return JSON.parse(json);
+}
+
 // ── Stock Price Fetching ──────────────────────────────────────────────
 
-/**
- * Fetch closing prices from Yahoo Finance for a list of symbols.
- * For TW stocks, tries .TW suffix first, then .TWO (OTC).
- * Also enriches with ex-dividend date from Yahoo quote API when available.
- */
 async function fetchStockPrices(market, symbols) {
   const prices = {};
 
@@ -178,7 +221,7 @@ async function fetchStockPrices(market, symbols) {
         const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (!r.ok) continue;
 
-        const json = await r.json();
+        const json   = await r.json();
         const result = json.chart?.result?.[0];
         if (!result) continue;
 
@@ -203,7 +246,6 @@ async function fetchStockPrices(market, symbols) {
     prices[symbol] = priceData || { error: 'Symbol not found', fetchedAt: new Date().toISOString() };
   }));
 
-  // Enrich with ex-dividend date via Yahoo quote API (best effort)
   const validSymbols = symbols.filter(s => prices[s] && !prices[s].error);
   if (validSymbols.length > 0) {
     try {
@@ -215,32 +257,23 @@ async function fetchStockPrices(market, symbols) {
       if (qr.ok) {
         const qd = await qr.json();
         for (const q of (qd.quoteResponse?.result || [])) {
-          const sym = market === 'TW'
-            ? q.symbol.replace(/\.(TW|TWO)$/i, '')
-            : q.symbol;
+          const sym = market === 'TW' ? q.symbol.replace(/\.(TW|TWO)$/i, '') : q.symbol;
           if (prices[sym]) {
-            if (q.exDividendDate) {
+            if (q.exDividendDate)
               prices[sym].exDividendDate = new Date(q.exDividendDate * 1000).toISOString().slice(0, 10);
-            }
-            if (q.trailingAnnualDividendRate) {
+            if (q.trailingAnnualDividendRate)
               prices[sym].annualDividendRate = q.trailingAnnualDividendRate;
-            }
           }
         }
       }
-    } catch { /* quote API is optional — skip ex-dividend data if unavailable */ }
+    } catch { /* optional enrichment */ }
   }
 
   return prices;
 }
 
-/**
- * Fetch the display name for a single stock symbol from Yahoo Finance.
- * Returns the name string or null if not found.
- */
 async function fetchStockName(market, symbol) {
   if (market === 'TW') {
-    // TWSE/TPEX MIS API returns proper Chinese names
     for (const ex of ['tse', 'otc']) {
       try {
         const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${ex}_${symbol}.tw&json=1&delay=0`;
@@ -253,7 +286,6 @@ async function fetchStockName(market, symbol) {
     }
   }
 
-  // Yahoo Finance fallback (English for TW, primary for US)
   const suffixes = market === 'TW' ? ['.TW', '.TWO'] : [''];
   for (const suffix of suffixes) {
     try {
@@ -271,17 +303,13 @@ async function fetchStockName(market, symbol) {
   return null;
 }
 
-/**
- * Fetch TWSE upcoming ex-dividend / ex-rights schedule.
- * Returns an array of objects keyed by the TWSE field names.
- */
 async function fetchTWSEDividends() {
   try {
     const r = await fetch('https://www.twse.com.tw/rwd/zh/exRight/TWT48U?response=json', {
       headers: { 'User-Agent': 'Mozilla/5.0' }
     });
     if (!r.ok) return [];
-    const json = await r.json();
+    const json   = await r.json();
     const fields = json.fields || [];
     return (json.data || []).map(row => {
       const obj = {};
@@ -289,26 +317,4 @@ async function fetchTWSEDividends() {
       return obj;
     });
   } catch { return []; }
-}
-
-// ── Load ─────────────────────────────────────────────────────────────
-
-async function loadFromNotion(env) {
-  const pageId = env.NOTION_PAGE_ID;
-  const blocks = await getAllBlocks(pageId, env);
-
-  if (blocks.length === 0) return null;
-
-  // Concatenate text from all paragraph blocks
-  const json = blocks
-    .filter(b => b.type === 'paragraph')
-    .map(b =>
-      (b.paragraph.rich_text || [])
-        .map(rt => rt.plain_text ?? rt.text?.content ?? '')
-        .join('')
-    )
-    .join('');
-
-  if (!json) return null;
-  return JSON.parse(json);
 }

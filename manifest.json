@@ -1,11 +1,11 @@
 {
-  "name": "財務管理系統",
-  "short_name": "財務管理",
-  "description": "個人財務管理：收支、銀行、訂閱、股票投資",
+  "name": "Cashio",
+  "short_name": "Cashio",
+  "description": "Personal finance: income, expenses, banks, subscriptions & stock investments",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#111827",
-  "theme_color": "#111827",
+  "background_color": "#0F172A",
+  "theme_color": "#065F46",
   "orientation": "portrait-primary",
   "icons": [
     {

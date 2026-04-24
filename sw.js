@@ -1,25 +1,28 @@
 /**
  * Service Worker — offline caching for PWA
  */
-const CACHE_NAME = 'finance-app-v2';
+const CACHE_NAME = 'cashio-v1';
 
 // Files to cache for offline use
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/css/app.css',
+  '/manifest.json',
   '/js/store.js',
   '/js/utils.js',
   '/js/app.js',
+  '/js/services/stock-price.js',
   '/js/components/modal.js',
   '/js/components/charts.js',
+  '/js/components/notion-sync.js',
   '/js/pages/dashboard.js',
   '/js/pages/transactions.js',
+  '/js/pages/events.js',
   '/js/pages/banks.js',
   '/js/pages/subscriptions.js',
   '/js/pages/tw-stocks.js',
   '/js/pages/us-stocks.js',
-  '/js/components/notion-sync.js',
   '/js/pages/settings.js',
 ];
 

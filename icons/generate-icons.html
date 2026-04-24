@@ -1,35 +1,132 @@
 <!DOCTYPE html>
-<!-- Open this file in a browser to generate PNG icons. Right-click → Save image as icon-192.png / icon-512.png -->
-<html>
-<head><title>Icon Generator</title></head>
-<body style="background:#111;display:flex;gap:20px;padding:20px;flex-wrap:wrap;">
-<script>
-  function makeIcon(size) {
-    const canvas = document.createElement('canvas');
-    canvas.width = size; canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    // Background
-    ctx.fillStyle = '#111827';
-    ctx.roundRect(0, 0, size, size, size * 0.2);
-    ctx.fill();
-    // Emoji
-    ctx.font = `${size * 0.55}px serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('💰', size / 2, size / 2);
-    return canvas;
-  }
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cashio — Generate Icons</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #0F172A; color: #e2e8f0; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; gap: 24px; }
+    h1 { color: #34D399; font-size: 28px; margin: 0; }
+    p { color: #94a3b8; text-align: center; }
+    code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+    .icons { display: flex; gap: 40px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+    .icon-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    canvas { border-radius: 22%; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+    button { background: linear-gradient(135deg,#10B981,#059669); color: white; border: none; padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    button:hover { opacity: 0.88; }
+    .label { color: #64748b; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Cashio Icons</h1>
+  <p>Download each PNG and place it in the <code>icons/</code> folder alongside this file.</p>
 
-  [192, 512].forEach(size => {
-    const canvas = makeIcon(size);
-    canvas.style.border = '2px solid #333';
-    canvas.title = `icon-${size}.png — right-click → Save as`;
-    document.body.appendChild(canvas);
-    const label = document.createElement('p');
-    label.style.color = '#fff'; label.style.fontSize = '12px';
-    label.textContent = `icon-${size}.png`;
-    document.body.appendChild(label);
-  });
-</script>
+  <div class="icons">
+    <div class="icon-wrap">
+      <canvas id="c192" width="192" height="192"></canvas>
+      <div class="label">192 × 192</div>
+      <button onclick="dl('c192','icon-192.png')">⬇ Download icon-192.png</button>
+    </div>
+    <div class="icon-wrap">
+      <canvas id="c512" width="512" height="512"></canvas>
+      <div class="label">512 × 512</div>
+      <button onclick="dl('c512','icon-512.png')">⬇ Download icon-512.png</button>
+    </div>
+  </div>
+
+  <script>
+    function drawIcon(canvas) {
+      const s   = canvas.width;
+      const ctx = canvas.getContext('2d');
+      const r   = s * 0.223;
+
+      // Clip to rounded rect
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.arcTo(s, 0, s, s, r);
+      ctx.arcTo(s, s, 0, s, r);
+      ctx.arcTo(0, s, 0, 0, r);
+      ctx.arcTo(0, 0, s, 0, r);
+      ctx.closePath();
+      ctx.clip();
+
+      // Background gradient
+      const bg = ctx.createLinearGradient(0, 0, s, s);
+      bg.addColorStop(0,    '#34D399');
+      bg.addColorStop(0.55, '#10B981');
+      bg.addColorStop(1,    '#065F46');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, s, s);
+
+      // Top shine
+      const shine = ctx.createLinearGradient(0, 0, 0, s * 0.62);
+      shine.addColorStop(0, 'rgba(255,255,255,0.20)');
+      shine.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = shine;
+      ctx.fillRect(0, 0, s, s * 0.62);
+
+      // Coin rings
+      [0.289, 0.238].forEach(rr => {
+        ctx.beginPath();
+        ctx.arc(s * 0.5, s * 0.51, s * rr, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+        ctx.lineWidth   = s * 0.004;
+        ctx.stroke();
+      });
+
+      // Bold C arc (opens to right: gap from -gap to +gap around angle 0)
+      const cx  = s * 0.5;
+      const cy  = s * 0.51;
+      const arc = s * 0.207;
+      const gap = 0.66; // ~38 degrees half-gap
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, arc, gap, 2 * Math.PI - gap, false);
+      ctx.strokeStyle = 'rgba(255,255,255,0.96)';
+      ctx.lineWidth   = s * 0.141;
+      ctx.lineCap     = 'round';
+      ctx.stroke();
+
+      // Vertical cent-mark line through C
+      const lx = cx - arc * 0.40;
+      ctx.beginPath();
+      ctx.moveTo(lx, s * 0.262);
+      ctx.lineTo(lx, s * 0.758);
+      ctx.strokeStyle = 'rgba(255,255,255,0.44)';
+      ctx.lineWidth   = s * 0.030;
+      ctx.lineCap     = 'round';
+      ctx.stroke();
+
+      // Bottom label strip
+      ctx.fillStyle = 'rgba(0,0,0,0.12)';
+      ctx.fillRect(0, s * 0.82, s, s);
+
+      ctx.fillStyle    = 'rgba(255,255,255,0.82)';
+      ctx.font         = `700 ${Math.round(s * 0.098)}px -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif`;
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('CASHIO', s * 0.5, s * 0.912);
+
+      // Sparkle dots
+      [
+        [0.769, 0.215, 0.027, 0.75],
+        [0.824, 0.285, 0.018, 0.50],
+        [0.723, 0.282, 0.014, 0.40],
+      ].forEach(([px, py, pr, a]) => {
+        ctx.beginPath();
+        ctx.arc(s * px, s * py, s * pr, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${a})`;
+        ctx.fill();
+      });
+    }
+
+    function dl(id, filename) {
+      const a = document.createElement('a');
+      a.href     = document.getElementById(id).toDataURL('image/png');
+      a.download = filename;
+      a.click();
+    }
+
+    ['c192', 'c512'].forEach(id => drawIcon(document.getElementById(id)));
+  </script>
 </body>
 </html>
