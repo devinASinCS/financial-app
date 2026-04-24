@@ -538,6 +538,7 @@ const Store = (() => {
       subscriptions: load(KEYS.subscriptions, []),
       dcaPlans:      load(KEYS.dcaPlans, []),
       debitLog:      load(KEYS.debitLog, {}),
+      events:        load(KEYS.events, []),
     };
   }
 
@@ -556,6 +557,7 @@ const Store = (() => {
       if (Array.isArray(obj.subscriptions)) save(KEYS.subscriptions, obj.subscriptions);
       if (Array.isArray(obj.dcaPlans))      save(KEYS.dcaPlans,      obj.dcaPlans);
       if (obj.debitLog && typeof obj.debitLog === 'object') save(KEYS.debitLog, obj.debitLog);
+      if (Array.isArray(obj.events))        save(KEYS.events,        obj.events);
       return {
         ok: true,
         counts: {

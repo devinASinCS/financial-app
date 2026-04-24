@@ -2,7 +2,7 @@
   "name": "Cashio",
   "short_name": "Cashio",
   "description": "Personal finance: income, expenses, banks, subscriptions & stock investments",
-  "start_url": "/",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0F172A",
   "theme_color": "#065F46",
