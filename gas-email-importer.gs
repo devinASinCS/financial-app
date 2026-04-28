@@ -2,31 +2,32 @@
  * Cashio Email Auto-Importer
  * ==========================
  * 自動從 Gmail 信用卡消費通知郵件匯入交易到 Cashio。
+ * 單封郵件含多筆消費明細時，會全部解析並分別寫入。
  *
  * 設定步驟：
  * 1. 前往 https://script.google.com → 建立新專案
  * 2. 將此檔案全部內容貼入 Code.gs
  * 3. 修改下方 CONFIG 區塊，填入你的 Worker URL
  * 4. 執行一次 setupTrigger() 安裝自動觸發器
- * 5. 依提示授權 Gmail 存取權限
+ * 5. 依提示授予 Gmail 存取權限
  *
  * 測試：
- * - 執行 testLatestEmail() 可預覽最新一封符合的郵件會被解析成什麼
- * - 執行 importCreditCardEmails() 可手動觸發一次完整匯入
+ * - 執行 testLatestEmail()  → 預覽最新符合郵件的全部解析結果（不寫入）
+ * - 執行 importCreditCardEmails() → 手動觸發一次完整匯入
  */
 
 // ─── 使用者設定區 ─────────────────────────────────────────────────────────────
-const CONFIG = {
+var CONFIG = {
   // Cashio 設定頁裡的 Cloudflare Worker URL（相同網址）
   workerUrl: 'https://YOUR_WORKER.YOUR_NAME.workers.dev',
 
-  // 選填：安全金鑰。若有在 Cloudflare Worker 環境變數設定 ADD_TX_SECRET，
-  // 請在這裡填入相同的值，否則留空即可。
+  // 選填：安全金鑰。若在 Cloudflare Worker 環境變數設定了 ADD_TX_SECRET，
+  // 請在這裡填入相同的值；否則留空。
   secret: '',
 
   // Gmail 搜尋條件，用來找信用卡消費通知郵件。
   // 可依你的銀行調整 subject 關鍵字。
-  gmailSearchQuery: 'subject:(消費通知 OR 刷卡通知 OR 消費提醒 OR 信用卡消費 OR 消費明細) newer_than:3d',
+  gmailSearchQuery: 'subject:(消費通知 OR 刷卡通知 OR 消費提醒 OR 信用卡消費 OR 消費明細 OR 消費彙整) newer_than:3d',
 
   // 自動執行間隔（分鐘）— setupTrigger() 會套用此設定
   triggerIntervalMinutes: 15,
@@ -35,15 +36,14 @@ const CONFIG = {
   defaultCategory: '其他',
 
   // 特店關鍵字 → 支出分類對應表
-  // Key 為正則表達式（不分大小寫），Value 為 Cashio 的支出分類名稱
   categoryMap: {
     '7-ELEVEN|全家|FamilyMart|萊爾富|OK便利|超商':         '日常購物',
     '麥當勞|McDonald|KFC|肯德基|摩斯|漢堡王|Burger King':  '餐飲',
     '星巴克|Starbucks|路易莎|Louisa|cama|咖啡|飲料':       '餐飲',
-    '餐廳|飯店食堂|小吃|火鍋|燒肉|牛排|拉麵|壽司|便當':    '餐飲',
+    '餐廳|飯店|食堂|小吃|火鍋|燒肉|牛排|拉麵|壽司|便當':  '餐飲',
     '誠品|博客來|momo|蝦皮|Shopee|PChome|Yahoo購物|蔦屋':  '網路購物',
-    '中油|台塑|加油|油站|CPC|Sinopec':                     '交通',
-    '捷運|MRT|高鐵|THSR|台鐵|TRA|公車|Bus|Uber|計程車':   '交通',
+    '中油|台塑|加油|油站|CPC':                             '交通',
+    '捷運|MRT|高鐵|THSR|台鐵|TRA|公車|Uber|計程車':       '交通',
     'Apple|Google Play|App Store|Netflix|Spotify|YouTube': '訂閱服務',
     '藥局|藥妝|屈臣氏|Watsons|康是美|Cosmed':              '醫療保健',
     '全聯|家樂福|Carrefour|大潤發|COSTCO|好市多|愛買':     '超市賣場',
@@ -55,60 +55,70 @@ const CONFIG = {
 
 /**
  * 主函式 — 由定時觸發器每 N 分鐘自動呼叫。
- * 掃描 Gmail 中符合條件的新郵件，解析後寫入 Cashio。
+ * 掃描 Gmail 中符合條件的新郵件，解析所有消費並寫入 Cashio。
  */
 function importCreditCardEmails() {
-  const props        = PropertiesService.getScriptProperties();
-  const processedIds = new Set(JSON.parse(props.getProperty('processedIds') || '[]'));
+  var props        = PropertiesService.getScriptProperties();
+  var processedIds = new Set(JSON.parse(props.getProperty('processedIds') || '[]'));
 
-  const threads = GmailApp.search(CONFIG.gmailSearchQuery, 0, 50);
-  let imported = 0;
-  let failed   = 0;
+  var threads   = GmailApp.search(CONFIG.gmailSearchQuery, 0, 50);
+  var imported  = 0;
+  var failed    = 0;
+  var unparsed  = 0;
 
-  for (const thread of threads) {
-    for (const msg of thread.getMessages()) {
-      const msgId = msg.getId();
+  for (var ti = 0; ti < threads.length; ti++) {
+    var msgs = threads[ti].getMessages();
+    for (var mi = 0; mi < msgs.length; mi++) {
+      var msg   = msgs[mi];
+      var msgId = msg.getId();
       if (processedIds.has(msgId)) continue;
 
-      const parsed = parseEmail(msg);
+      var transactions = parseEmail(msg);
 
-      // 無論是否成功解析，都記錄為已處理，避免重複嘗試
+      // 無論是否成功解析，都標記為已處理，避免重複嘗試
       processedIds.add(msgId);
 
-      if (!parsed) continue;
-
-      const ok = postTransaction(parsed);
-      if (ok) {
-        imported++;
-        Logger.log('✅ 已匯入：' + JSON.stringify(parsed));
-      } else {
-        failed++;
-        Logger.log('❌ 寫入失敗：' + JSON.stringify(parsed));
+      if (transactions.length === 0) {
+        unparsed++;
+        continue;
       }
+
+      for (var ti2 = 0; ti2 < transactions.length; ti2++) {
+        var ok = postTransaction(transactions[ti2]);
+        if (ok) {
+          imported++;
+        } else {
+          failed++;
+          Logger.log('❌ 寫入失敗：' + JSON.stringify(transactions[ti2]));
+        }
+      }
+      Logger.log('✅ 郵件 ' + msg.getSubject() + ' 解析出 ' + transactions.length + ' 筆，成功寫入 ' + (transactions.length - failed));
     }
   }
 
   // 只保留最近 1000 個 ID，避免無限增長
-  const idsToStore = [...processedIds].slice(-1000);
-  props.setProperty('processedIds', JSON.stringify(idsToStore));
+  var idsToStore = [];
+  processedIds.forEach(function(id) { idsToStore.push(id); });
+  props.setProperty('processedIds', JSON.stringify(idsToStore.slice(-1000)));
 
-  Logger.log('完成：匯入 ' + imported + ' 筆，失敗 ' + failed + ' 筆');
+  Logger.log('完成：匯入 ' + imported + ' 筆，失敗 ' + failed + ' 筆，無法解析 ' + unparsed + ' 封');
 }
 
 
 /**
- * 嘗試用各家銀行解析器解析郵件，返回交易物件或 null。
+ * 解析一封 Gmail 郵件，回傳 Transaction 陣列（可能為空陣列）。
  */
 function parseEmail(msg) {
-  const from    = msg.getFrom().toLowerCase();
-  const subject = msg.getSubject();
-  const body    = msg.getPlainBody();
-  const date    = msg.getDate();
+  var from    = msg.getFrom().toLowerCase();
+  var subject = msg.getSubject();
+  var body    = msg.getPlainBody();
+  var date    = msg.getDate();
 
-  for (const parser of BANK_PARSERS) {
+  for (var i = 0; i < BANK_PARSERS.length; i++) {
+    var parser = BANK_PARSERS[i];
     if (parser.senderMatch(from) || parser.subjectMatch(subject)) {
-      const result = parser.parse(body, subject, date);
-      if (result) return result;
+      var results = parser.parse(body, subject, date);
+      if (results && results.length > 0) return results;
     }
   }
 
@@ -117,25 +127,25 @@ function parseEmail(msg) {
 
 
 /**
- * 將解析好的交易 POST 到 Cloudflare Worker 的 add_transaction 端點。
+ * 將一筆交易 POST 到 Cashio Cloudflare Worker 的 add_transaction 端點。
  */
 function postTransaction(tx) {
   if (!CONFIG.workerUrl || CONFIG.workerUrl.indexOf('YOUR_WORKER') !== -1) {
-    Logger.log('❌ 尚未設定 CONFIG.workerUrl，請先填入你的 Worker URL');
+    Logger.log('❌ 尚未設定 CONFIG.workerUrl');
     return false;
   }
 
-  const payload = { action: 'add_transaction', transaction: tx };
+  var payload = { action: 'add_transaction', transaction: tx };
   if (CONFIG.secret) payload.secret = CONFIG.secret;
 
   try {
-    const res  = UrlFetchApp.fetch(CONFIG.workerUrl, {
-      method:           'post',
-      contentType:      'application/json',
-      payload:          JSON.stringify(payload),
+    var res  = UrlFetchApp.fetch(CONFIG.workerUrl, {
+      method:             'post',
+      contentType:        'application/json',
+      payload:            JSON.stringify(payload),
       muteHttpExceptions: true,
     });
-    const json = JSON.parse(res.getContentText());
+    var json = JSON.parse(res.getContentText());
     if (!json.ok) {
       Logger.log('❌ Worker 回應錯誤：' + json.error);
       return false;
@@ -148,9 +158,59 @@ function postTransaction(tx) {
 }
 
 
-// ─── 各家銀行解析器 ───────────────────────────────────────────────────────────
+// ─── 核心：多筆分割邏輯 ───────────────────────────────────────────────────────
 
-const BANK_PARSERS = [
+/**
+ * 將郵件 body 依「交易錨點」切割成多個交易區塊。
+ *
+ * 優先嘗試以時間/日期欄位作為分割點（每筆交易必有，合計列通常沒有）。
+ * 若找不到兩個以上的時間錨點，改用金額欄位作為分割點。
+ * 若只找到一個錨點，直接回傳 [body]（當成單筆處理）。
+ *
+ * @param {string} body - 郵件純文字內文
+ * @param {string[]} timeAnchors - 時間/日期欄位的 regex 字串（優先用）
+ * @param {string[]} amountAnchors - 金額欄位的 regex 字串（備援用）
+ * @returns {string[]} 切割好的區塊陣列
+ */
+function smartSplit(body, timeAnchors, amountAnchors) {
+  // 先試時間錨點（最可靠，不會出現在合計列）
+  for (var i = 0; i < timeAnchors.length; i++) {
+    var blocks = splitByPattern(body, timeAnchors[i]);
+    if (blocks.length >= 2) return blocks;
+  }
+  // 備援：金額錨點
+  if (amountAnchors) {
+    for (var j = 0; j < amountAnchors.length; j++) {
+      var blocks2 = splitByPattern(body, amountAnchors[j]);
+      if (blocks2.length >= 2) return blocks2;
+    }
+  }
+  return [body];
+}
+
+/**
+ * 找出 pattern 所有出現位置，以這些位置為起點切割 body。
+ */
+function splitByPattern(body, pattern) {
+  var re        = new RegExp(pattern, 'g');
+  var positions = [];
+  var m;
+  while ((m = re.exec(body)) !== null) positions.push(m.index);
+  if (positions.length < 2) return [body];
+
+  var blocks = [];
+  for (var i = 0; i < positions.length; i++) {
+    var start = positions[i];
+    var end   = i < positions.length - 1 ? positions[i + 1] : body.length;
+    blocks.push(body.slice(start, end));
+  }
+  return blocks;
+}
+
+
+// ─── 各家銀行解析器（parse() 均回傳 Transaction[]）───────────────────────────
+
+var BANK_PARSERS = [
 
   // ── 國泰世華銀行 ────────────────────────────────────────────────────────────
   {
@@ -158,12 +218,15 @@ const BANK_PARSERS = [
     senderMatch:  function(f) { return /cathaylife|cathaybk|cathayunited|cathay-united/i.test(f); },
     subjectMatch: function(s) { return /國泰|Cathay/i.test(s) && /消費|刷卡/i.test(s); },
     parse: function(body, subject, msgDate) {
-      var amount   = extractAmount(body, [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i]);
-      var merchant = extractText(body,   [/消費特店[：:]\s*(.+)/i, /消費商店[：:]\s*(.+)/i, /消費地點[：:]\s*(.+)/i]);
-      var date     = extractDate(body,   [/消費時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i,
-                                          /交易時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i]) || toDateStr(msgDate);
-      if (!amount) return null;
-      return buildTx(amount, merchant, date);
+      var blocks = smartSplit(body,
+        ['消費時間[：:]', '交易時間[：:]'],
+        ['消費金額[：:]']
+      );
+      return parseBlocks(blocks, msgDate, {
+        amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
+        merchantRe: [/消費特店[：:]\s*(.+)/i, /消費商店[：:]\s*(.+)/i, /消費地點[：:]\s*(.+)/i],
+        dateRe:     [/消費時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i],
+      });
     },
   },
 
@@ -173,12 +236,15 @@ const BANK_PARSERS = [
     senderMatch:  function(f) { return /esunbank|e\.sun|esun\.com/i.test(f); },
     subjectMatch: function(s) { return /玉山/i.test(s) && /消費|刷卡/i.test(s); },
     parse: function(body, subject, msgDate) {
-      var amount   = extractAmount(body, [/消費金額\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i]);
-      var merchant = extractText(body,   [/消費商店\s+(.+)/i, /特店名稱\s+(.+)/i, /消費店家\s+(.+)/i]);
-      var date     = extractDate(body,   [/消費時間\s+(\d{4}\/\d{2}\/\d{2})/i,
-                                          /交易日期\s+(\d{4}\/\d{2}\/\d{2})/i]) || toDateStr(msgDate);
-      if (!amount) return null;
-      return buildTx(amount, merchant, date);
+      var blocks = smartSplit(body,
+        ['消費時間\\s', '交易日期\\s'],
+        ['消費金額\\s']
+      );
+      return parseBlocks(blocks, msgDate, {
+        amountRe:   [/消費金額\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
+        merchantRe: [/消費商店\s+(.+)/i, /特店名稱\s+(.+)/i, /消費店家\s+(.+)/i],
+        dateRe:     [/消費時間\s+(\d{4}\/\d{2}\/\d{2})/i, /交易日期\s+(\d{4}\/\d{2}\/\d{2})/i],
+      });
     },
   },
 
@@ -188,18 +254,16 @@ const BANK_PARSERS = [
     senderMatch:  function(f) { return /ctbcbank|ctbc|chinatrust/i.test(f); },
     subjectMatch: function(s) { return /中信|中國信託/i.test(s) && /消費|刷卡/i.test(s); },
     parse: function(body, subject, msgDate) {
-      var amount   = extractAmount(body, [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i,
-                                          /金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$?\s*([\d,]+)/i]);
-      var merchant = extractText(body,   [/消費地點[：:]\s*(.+)/i, /特店[：:]\s*(.+)/i, /商店[：:]\s*(.+)/i]);
-      // 中信有時只有 MM/DD 格式
-      var dateStr  = extractDate(body,   [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i,
-                                          /交易日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i,
-                                          /(\d{2}\/\d{2})/]);
-      var date     = dateStr && dateStr.length === 5
-                       ? inferFullDate(dateStr, msgDate)
-                       : (dateStr || toDateStr(msgDate));
-      if (!amount) return null;
-      return buildTx(amount, merchant, date);
+      var blocks = smartSplit(body,
+        ['消費日期[：:]', '交易日期[：:]', '消費時間[：:]'],
+        ['消費金額[：:]', '金額[：:]']
+      );
+      return parseBlocks(blocks, msgDate, {
+        amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$?\s*([\d,]+)/i],
+        merchantRe: [/消費地點[：:]\s*(.+)/i, /特店[：:]\s*(.+)/i, /商店[：:]\s*(.+)/i],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /(\d{2}\/\d{2})/],
+        inferYear:  true,
+      }, msgDate);
     },
   },
 
@@ -209,14 +273,15 @@ const BANK_PARSERS = [
     senderMatch:  function(f) { return /taishinbank|taishin/i.test(f); },
     subjectMatch: function(s) { return /台新/i.test(s) && /消費|刷卡/i.test(s); },
     parse: function(body, subject, msgDate) {
-      var amount   = extractAmount(body, [/消費金額[：:]\s*NTD?\s*([\d,]+)/i,
-                                          /NT\$\s*([\d,]+)/i, /NTD\s*([\d,]+)/i]);
-      var merchant = extractText(body,   [/消費商店[：:]\s*(.+)/i, /交易商店[：:]\s*(.+)/i]);
-      var date     = extractDate(body,   [/交易時間[：:]\s*(\d{4}-\d{2}-\d{2})/i,
-                                          /(\d{4}\/\d{2}\/\d{2})/i,
-                                          /(\d{4}-\d{2}-\d{2})/i]) || toDateStr(msgDate);
-      if (!amount) return null;
-      return buildTx(amount, merchant, date);
+      var blocks = smartSplit(body,
+        ['交易時間[：:]', '消費時間[：:]'],
+        ['消費金額[：:]']
+      );
+      return parseBlocks(blocks, msgDate, {
+        amountRe:   [/消費金額[：:]\s*NTD?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i, /NTD\s*([\d,]+)/i],
+        merchantRe: [/消費商店[：:]\s*(.+)/i, /交易商店[：:]\s*(.+)/i],
+        dateRe:     [/交易時間[：:]\s*(\d{4}-\d{2}-\d{2})/i, /(\d{4}\/\d{2}\/\d{2})/i, /(\d{4}-\d{2}-\d{2})/i],
+      });
     },
   },
 
@@ -226,11 +291,15 @@ const BANK_PARSERS = [
     senderMatch:  function(f) { return /fubon|taipeibank|tpfubon/i.test(f); },
     subjectMatch: function(s) { return /富邦/i.test(s) && /消費|刷卡/i.test(s); },
     parse: function(body, subject, msgDate) {
-      var amount   = extractAmount(body, [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i]);
-      var merchant = extractText(body,   [/消費商店[：:]\s*(.+)/i, /消費地點[：:]\s*(.+)/i]);
-      var date     = extractDate(body,   [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i]) || toDateStr(msgDate);
-      if (!amount) return null;
-      return buildTx(amount, merchant, date);
+      var blocks = smartSplit(body,
+        ['消費日期[：:]', '交易日期[：:]'],
+        ['消費金額[：:]']
+      );
+      return parseBlocks(blocks, msgDate, {
+        amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
+        merchantRe: [/消費商店[：:]\s*(.+)/i, /消費地點[：:]\s*(.+)/i],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i],
+      });
     },
   },
 
@@ -240,11 +309,15 @@ const BANK_PARSERS = [
     senderMatch:  function(f) { return /sinopac|banksinopac/i.test(f); },
     subjectMatch: function(s) { return /永豐/i.test(s) && /消費|刷卡/i.test(s); },
     parse: function(body, subject, msgDate) {
-      var amount   = extractAmount(body, [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i]);
-      var merchant = extractText(body,   [/消費商店[：:]\s*(.+)/i, /商店名稱[：:]\s*(.+)/i]);
-      var date     = extractDate(body,   [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i]) || toDateStr(msgDate);
-      if (!amount) return null;
-      return buildTx(amount, merchant, date);
+      var blocks = smartSplit(body,
+        ['消費日期[：:]', '交易日期[：:]'],
+        ['消費金額[：:]']
+      );
+      return parseBlocks(blocks, msgDate, {
+        amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
+        merchantRe: [/消費商店[：:]\s*(.+)/i, /商店名稱[：:]\s*(.+)/i],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i],
+      });
     },
   },
 
@@ -254,11 +327,15 @@ const BANK_PARSERS = [
     senderMatch:  function(f) { return /unibank|unionbank/i.test(f); },
     subjectMatch: function(s) { return /聯邦/i.test(s) && /消費|刷卡/i.test(s); },
     parse: function(body, subject, msgDate) {
-      var amount   = extractAmount(body, [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i]);
-      var merchant = extractText(body,   [/消費商店[：:]\s*(.+)/i]);
-      var date     = extractDate(body,   [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i]) || toDateStr(msgDate);
-      if (!amount) return null;
-      return buildTx(amount, merchant, date);
+      var blocks = smartSplit(body,
+        ['消費日期[：:]', '消費時間[：:]'],
+        ['消費金額[：:]']
+      );
+      return parseBlocks(blocks, msgDate, {
+        amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
+        merchantRe: [/消費商店[：:]\s*(.+)/i],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i],
+      });
     },
   },
 
@@ -268,53 +345,97 @@ const BANK_PARSERS = [
     senderMatch:  function(f) { return /linepay|line\.me|jkopay/i.test(f); },
     subjectMatch: function(s) { return /LINE Pay|街口|全支付/i.test(s); },
     parse: function(body, subject, msgDate) {
-      var amount   = extractAmount(body, [/NT\$\s*([\d,]+)/i, /消費金額\s*([\d,]+)/i, /付款金額\s*([\d,]+)/i]);
-      var merchant = extractText(body,   [/消費店家[：:]\s*(.+)/i, /付款至[：:]\s*(.+)/i, /交易商店[：:]\s*(.+)/i]);
-      var date     = toDateStr(msgDate);
-      if (!amount) return null;
-      return buildTx(amount, merchant, date);
+      var blocks = smartSplit(body,
+        ['交易時間[：:]', '付款時間[：:]'],
+        ['NT\\$\\s*[\\d,]+']
+      );
+      return parseBlocks(blocks, msgDate, {
+        amountRe:   [/NT\$\s*([\d,]+)/i, /消費金額\s*([\d,]+)/i, /付款金額\s*([\d,]+)/i],
+        merchantRe: [/消費店家[：:]\s*(.+)/i, /付款至[：:]\s*(.+)/i, /交易商店[：:]\s*(.+)/i],
+        dateRe:     [/交易時間[：:]\s*(\d{4}[-\/]\d{2}[-\/]\d{2})/i, /(\d{4}-\d{2}-\d{2})/i],
+      });
     },
   },
 
 ];
 
 
-// ─── 通用備援解析器（無法辨識銀行時使用）──────────────────────────────────────
+// ─── 通用備援解析器 ───────────────────────────────────────────────────────────
 
 function parseGeneric(body, subject, msgDate) {
-  // 必須看起來像消費通知
-  if (!/消費|刷卡|信用卡/.test(subject + body)) return null;
+  if (!/消費|刷卡|信用卡/.test(subject + body)) return [];
 
-  var amount = extractAmount(body, [
-    /消費金額[：:\s]*NT\$?\s*([\d,]+)/i,
-    /NT\$\s*([\d,]+)/i,
-    /NTD\s*([\d,]+)/i,
-    /新台幣\s*([\d,]+)\s*元/i,
-    /金額[：:\s]*\$?\s*([\d,]+)/i,
-  ]);
-  if (!amount || amount < 1) return null;
+  // 以常見時間/日期欄位切割，再以金額備援
+  var blocks = smartSplit(body,
+    ['消費時間[：:]', '交易時間[：:]', '消費日期[：:]', '交易日期[：:]'],
+    ['消費金額[：:]', 'NT\\$\\s*[\\d,]+']
+  );
 
-  var merchant = extractText(body, [
-    /消費特店[：:]\s*(.+)/i,
-    /消費商店[：:]\s*(.+)/i,
-    /消費地點[：:]\s*(.+)/i,
-    /特店[：:]\s*(.+)/i,
-    /商店[：:]\s*(.+)/i,
-  ]);
-  var date = extractDate(body, [
-    /(\d{4}\/\d{2}\/\d{2})/,
-    /(\d{4}-\d{2}-\d{2})/,
-  ]) || toDateStr(msgDate);
+  return parseBlocks(blocks, msgDate, {
+    amountRe: [
+      /消費金額[：:\s]*NT\$?\s*([\d,]+)/i,
+      /NT\$\s*([\d,]+)/i,
+      /NTD\s*([\d,]+)/i,
+      /新台幣\s*([\d,]+)\s*元/i,
+      /金額[：:\s]*\$?\s*([\d,]+)/i,
+    ],
+    merchantRe: [
+      /消費特店[：:]\s*(.+)/i, /消費商店[：:]\s*(.+)/i,
+      /消費地點[：:]\s*(.+)/i, /特店[：:]\s*(.+)/i, /商店[：:]\s*(.+)/i,
+    ],
+    dateRe: [
+      /(\d{4}\/\d{2}\/\d{2})/,
+      /(\d{4}-\d{2}-\d{2})/,
+    ],
+  });
+}
 
-  return buildTx(amount, merchant, date);
+
+// ─── 區塊批次解析（所有 parser 共用）─────────────────────────────────────────
+
+/**
+ * 對每個區塊套用 extractAmount / extractText / extractDate，
+ * 回傳有效交易的陣列。
+ *
+ * @param {string[]} blocks  - 已切割的區塊陣列
+ * @param {Date}     msgDate - 郵件接收時間（日期備援）
+ * @param {Object}   opts    - { amountRe, merchantRe, dateRe, inferYear }
+ * @returns {Object[]} Transaction 陣列
+ */
+function parseBlocks(blocks, msgDate, opts) {
+  var results = [];
+  var fallbackDate = toDateStr(msgDate);
+
+  for (var i = 0; i < blocks.length; i++) {
+    var block = blocks[i];
+
+    var amount = extractAmount(block, opts.amountRe);
+    if (!amount || amount <= 0) continue;
+
+    var merchant = extractText(block, opts.merchantRe || []);
+
+    var rawDate = extractDate(block, opts.dateRe || []);
+    var date;
+    if (!rawDate) {
+      date = fallbackDate;
+    } else if (opts.inferYear && /^\d{2}-\d{2}$/.test(rawDate)) {
+      date = inferFullDate(rawDate, msgDate);
+    } else {
+      date = rawDate;
+    }
+
+    results.push(buildTx(amount, merchant, date));
+  }
+
+  return results;
 }
 
 
 // ─── 工具函式 ─────────────────────────────────────────────────────────────────
 
-function extractAmount(body, patterns) {
+function extractAmount(text, patterns) {
   for (var i = 0; i < patterns.length; i++) {
-    var m = body.match(patterns[i]);
+    var m = text.match(patterns[i]);
     if (m) {
       var n = parseInt(m[1].replace(/,/g, ''), 10);
       if (n > 0) return n;
@@ -323,32 +444,32 @@ function extractAmount(body, patterns) {
   return null;
 }
 
-function extractText(body, patterns) {
+function extractText(text, patterns) {
   for (var i = 0; i < patterns.length; i++) {
-    var m = body.match(patterns[i]);
+    var m = text.match(patterns[i]);
     if (m) {
-      var text = m[1].trim().split(/[\n\r]/)[0].trim();
-      if (text.length > 0 && text.length < 80) return text;
+      var t = m[1].trim().split(/[\n\r]/)[0].trim();
+      if (t.length > 0 && t.length < 80) return t;
     }
   }
   return null;
 }
 
-function extractDate(body, patterns) {
+function extractDate(text, patterns) {
   for (var i = 0; i < patterns.length; i++) {
-    var m = body.match(patterns[i]);
+    var m = text.match(patterns[i]);
     if (m) {
-      var normalized = m[1].replace(/\//g, '-');
-      if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
-      if (/^\d{2}-\d{2}$/.test(normalized)) return normalized; // MM-DD，需 inferFullDate
+      var raw = m[1].replace(/\//g, '-');
+      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+      if (/^\d{2}-\d{2}$/.test(raw)) return raw; // MM-DD，需 inferFullDate
     }
   }
   return null;
 }
 
-// MM/DD 格式補上年份（用郵件接收年份推斷）
+// MM-DD 格式補上年份（用郵件接收年份推斷）
 function inferFullDate(mmdd, msgDate) {
-  var parts = mmdd.replace(/-/g, '/').split('/');
+  var parts = mmdd.split('-');
   if (parts.length === 2) {
     var year = msgDate.getFullYear();
     return year + '-' + parts[0].padStart(2, '0') + '-' + parts[1].padStart(2, '0');
@@ -358,9 +479,9 @@ function inferFullDate(mmdd, msgDate) {
 
 function toDateStr(date) {
   var y = date.getFullYear();
-  var m = String(date.getMonth() + 1).padStart(2, '0');
-  var d = String(date.getDate()).padStart(2, '0');
-  return y + '-' + m + '-' + d;
+  var mo = String(date.getMonth() + 1).padStart(2, '0');
+  var d  = String(date.getDate()).padStart(2, '0');
+  return y + '-' + mo + '-' + d;
 }
 
 function mapCategory(merchant) {
@@ -372,14 +493,12 @@ function mapCategory(merchant) {
 }
 
 function buildTx(amount, merchant, date) {
-  var note     = merchant ? merchant.slice(0, 60) : '';
-  var category = mapCategory(merchant);
   return {
     date:          date,
     type:          'expense',
     amount:        amount,        // 必須是 number
-    category:      category,
-    note:          note,
+    category:      mapCategory(merchant),
+    note:          merchant ? merchant.slice(0, 60) : '',
     source:        'email_import',
     paymentMethod: 'credit_card',
   };
@@ -390,52 +509,53 @@ function buildTx(amount, merchant, date) {
 
 /**
  * 執行一次此函式來安裝定時觸發器。
- * 之後 importCreditCardEmails() 會每隔 N 分鐘自動執行。
  */
 function setupTrigger() {
-  // 先刪除已存在的同名觸發器
   ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === 'importCreditCardEmails') {
-      ScriptApp.deleteTrigger(t);
-    }
+    if (t.getHandlerFunction() === 'importCreditCardEmails') ScriptApp.deleteTrigger(t);
   });
-
   ScriptApp.newTrigger('importCreditCardEmails')
     .timeBased()
     .everyMinutes(CONFIG.triggerIntervalMinutes)
     .create();
-
   Logger.log('✅ 觸發器已建立：每 ' + CONFIG.triggerIntervalMinutes + ' 分鐘執行一次 importCreditCardEmails()');
 }
 
 /**
- * 測試函式：解析最新一封符合條件的郵件，在 Logs 顯示結果（不實際寫入）。
+ * 測試函式：解析最新一封符合條件的郵件，在 Logs 顯示【全部】解析結果（不寫入）。
  */
 function testLatestEmail() {
   var threads = GmailApp.search(CONFIG.gmailSearchQuery, 0, 1);
   if (threads.length === 0) {
-    Logger.log('找不到符合條件的郵件。請確認 gmailSearchQuery 設定是否正確。');
+    Logger.log('找不到符合條件的郵件。請確認 gmailSearchQuery 設定。');
     return;
   }
 
   var msg = threads[0].getMessages()[0];
   Logger.log('寄件人：' + msg.getFrom());
   Logger.log('主旨：'   + msg.getSubject());
-  Logger.log('郵件內文（前 600 字）：\n' + msg.getPlainBody().slice(0, 600));
-  Logger.log('---');
+  Logger.log('─── 郵件內文（前 800 字）───');
+  Logger.log(msg.getPlainBody().slice(0, 800));
+  Logger.log('────────────────────────────');
 
-  var parsed = parseEmail(msg);
-  if (parsed) {
-    Logger.log('✅ 解析結果：\n' + JSON.stringify(parsed, null, 2));
-    Logger.log('\n（此為預覽，尚未寫入 Cashio）');
-  } else {
-    Logger.log('❌ 無法解析此郵件。');
-    Logger.log('請檢查銀行解析器的 senderMatch / subjectMatch 條件，或在 BANK_PARSERS 新增你的銀行。');
+  var transactions = parseEmail(msg);
+
+  if (transactions.length === 0) {
+    Logger.log('❌ 無法解析任何消費。');
+    Logger.log('建議：複製上方郵件內文，確認你的銀行名稱/發信地址是否符合 BANK_PARSERS 的 senderMatch/subjectMatch 條件。');
+    Logger.log('若需新增銀行，請仿照 BANK_PARSERS 內既有格式新增一個 parser。');
+    return;
   }
+
+  Logger.log('✅ 共解析出 ' + transactions.length + ' 筆消費：');
+  for (var i = 0; i < transactions.length; i++) {
+    Logger.log('  [' + (i+1) + '] ' + JSON.stringify(transactions[i]));
+  }
+  Logger.log('（此為預覽，尚未寫入 Cashio）');
 }
 
 /**
- * 清除已處理 ID 紀錄，讓所有郵件重新被掃描（用於重置或測試）。
+ * 清除已處理 ID 紀錄（讓所有郵件重新被掃描，用於重置或測試）。
  */
 function clearProcessedIds() {
   PropertiesService.getScriptProperties().deleteProperty('processedIds');
