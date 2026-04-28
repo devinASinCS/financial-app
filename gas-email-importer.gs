@@ -61,10 +61,9 @@ function importCreditCardEmails() {
   var props        = PropertiesService.getScriptProperties();
   var processedIds = new Set(JSON.parse(props.getProperty('processedIds') || '[]'));
 
-  var threads   = GmailApp.search(CONFIG.gmailSearchQuery, 0, 50);
-  var imported  = 0;
-  var failed    = 0;
-  var unparsed  = 0;
+  var threads      = GmailApp.search(CONFIG.gmailSearchQuery, 0, 50);
+  var allTxs       = [];
+  var unparsed     = 0;
 
   for (var ti = 0; ti < threads.length; ti++) {
     var msgs = threads[ti].getMessages();
@@ -80,28 +79,32 @@ function importCreditCardEmails() {
 
       if (transactions.length === 0) {
         unparsed++;
-        continue;
-      }
-
-      for (var ti2 = 0; ti2 < transactions.length; ti2++) {
-        var ok = postTransaction(transactions[ti2]);
-        if (ok) {
-          imported++;
-        } else {
-          failed++;
-          Logger.log('❌ 寫入失敗：' + JSON.stringify(transactions[ti2]));
+      } else {
+        for (var ti2 = 0; ti2 < transactions.length; ti2++) {
+          allTxs.push(transactions[ti2]);
         }
+        Logger.log('📧 ' + msg.getSubject() + ' → ' + transactions.length + ' 筆');
       }
-      Logger.log('✅ 郵件 ' + msg.getSubject() + ' 解析出 ' + transactions.length + ' 筆，成功寫入 ' + (transactions.length - failed));
     }
   }
 
-  // 只保留最近 1000 個 ID，避免無限增長
+  // 儲存已處理 ID（只保留最近 1000 個）
   var idsToStore = [];
   processedIds.forEach(function(id) { idsToStore.push(id); });
   props.setProperty('processedIds', JSON.stringify(idsToStore.slice(-1000)));
 
-  Logger.log('完成：匯入 ' + imported + ' 筆，失敗 ' + failed + ' 筆，無法解析 ' + unparsed + ' 封');
+  if (allTxs.length === 0) {
+    Logger.log('完成：無新交易（無法解析 ' + unparsed + ' 封）');
+    return;
+  }
+
+  // 所有交易一次性寫入，只打一次 Worker
+  var ok = postTransactions(allTxs);
+  if (ok) {
+    Logger.log('✅ 完成：成功匯入 ' + allTxs.length + ' 筆，無法解析 ' + unparsed + ' 封');
+  } else {
+    Logger.log('❌ 完成：寫入失敗，' + allTxs.length + ' 筆未匯入，無法解析 ' + unparsed + ' 封');
+  }
 }
 
 
@@ -127,15 +130,15 @@ function parseEmail(msg) {
 
 
 /**
- * 將一筆交易 POST 到 Cashio Cloudflare Worker 的 add_transaction 端點。
+ * 將所有交易批次 POST 到 Cashio Cloudflare Worker（一次 HTTP 請求）。
  */
-function postTransaction(tx) {
+function postTransactions(txList) {
   if (!CONFIG.workerUrl || CONFIG.workerUrl.indexOf('YOUR_WORKER') !== -1) {
     Logger.log('❌ 尚未設定 CONFIG.workerUrl');
     return false;
   }
 
-  var payload = { action: 'add_transaction', transaction: tx };
+  var payload = { action: 'add_transactions', transactions: txList };
   if (CONFIG.secret) payload.secret = CONFIG.secret;
 
   try {

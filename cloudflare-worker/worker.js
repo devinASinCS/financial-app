@@ -116,6 +116,44 @@ export default {
         return jsonResp({ ok: true, transaction: newTx });
       }
 
+      if (action === 'add_transactions') {
+        if (env.ADD_TX_SECRET && body.secret !== env.ADD_TX_SECRET) {
+          return jsonResp({ ok: false, error: 'Unauthorized' }, 403);
+        }
+        if (!env.CASHIO_KV) {
+          return jsonResp({ ok: false, error: 'CASHIO_KV not configured' }, 500);
+        }
+        const txList = body.transactions;
+        if (!Array.isArray(txList) || txList.length === 0) {
+          return jsonResp({ ok: false, error: 'transactions array required' }, 400);
+        }
+        const raw  = await env.CASHIO_KV.get('backup');
+        const data = raw ? JSON.parse(raw) : {};
+        if (!Array.isArray(data.transactions)) data.transactions = [];
+
+        const newTxs = txList
+          .filter(tx => tx && typeof tx.amount === 'number' && tx.date)
+          .map(tx => ({
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+            date:          tx.date,
+            type:          'expense',
+            amount:        tx.amount,
+            category:      tx.category || '其他',
+            note:          tx.note     || '',
+            source:        'email_import',
+            paymentMethod: 'credit_card',
+            bankId:        tx.bankId   || null,
+            cardId:        tx.cardId   || null,
+            eventId:       null,
+            foreignAmount: null, foreignCurrency: null, exchangeRate: null,
+          }));
+
+        data.transactions.push(...newTxs);
+        data._savedAt = new Date().toISOString();
+        await env.CASHIO_KV.put('backup', JSON.stringify(data));
+        return jsonResp({ ok: true, count: newTxs.length });
+      }
+
       return jsonResp({ ok: false, error: `Unknown action: ${action}` }, 400);
     } catch (e) {
       return jsonResp({ ok: false, error: e.message }, 500);
