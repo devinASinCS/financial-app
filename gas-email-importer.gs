@@ -218,14 +218,25 @@ var BANK_PARSERS = [
     senderMatch:  function(f) { return /cathaylife|cathaybk|cathayunited|cathay-united/i.test(f); },
     subjectMatch: function(s) { return /國泰|Cathay/i.test(s) && /消費|刷卡/i.test(s); },
     parse: function(body, subject, msgDate) {
+      // 優先以表格標頭列「卡別 行動卡號後4碼…」分割（每筆消費前各出現一次）
+      // 備援：帶標籤的時間欄位（部分格式仍有）
       var blocks = smartSplit(body,
-        ['消費時間[：:]', '交易時間[：:]'],
-        ['消費金額[：:]']
+        ['卡別[\\s　]+行動卡號', '消費時間[：:]', '交易時間[：:]'],
+        ['NT\\$\\s*[\\d,]+']
       );
       return parseBlocks(blocks, msgDate, {
         amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
-        merchantRe: [/消費特店[：:]\s*(.+)/i, /消費商店[：:]\s*(.+)/i, /消費地點[：:]\s*(.+)/i],
-        dateRe:     [/消費時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i],
+        merchantRe: [
+          /消費特店[：:]\s*(.+)/i,
+          /消費商店[：:]\s*(.+)/i,
+          /消費地點[：:]\s*(.+)/i,
+          /NT\$[\d,]+\s+([^\n\r]+)/i,   // 表格格式：NT$金額 商店名稱 …
+        ],
+        dateRe: [
+          /消費時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i,
+          /交易時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i,
+          /(\d{4}\/\d{2}\/\d{2})/,      // 表格格式：正卡 2026/04/27 17:23 TW
+        ],
       });
     },
   },
