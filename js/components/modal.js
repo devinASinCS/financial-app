@@ -13,9 +13,7 @@ const Modal = (() => {
     overlay.classList.add('flex');
     _onClose = onClose || null;
 
-    overlay.onclick = (e) => {
-      if (e.target === overlay) close();
-    };
+    // clicking outside the modal does NOT close it
   }
 
   function close() {
@@ -918,7 +916,7 @@ const Modal = (() => {
     const isTW = market === 'TW';
     const p = existing || {
       symbol: '', name: '', monthlyAmount: '', executionDay: 1,
-      active: true, note: '', bankId: '', cardId: '',
+      active: true, note: '', bankId: '', cardId: '', fee: '',
     };
 
     const banks = Store.getBanks();
@@ -966,6 +964,10 @@ const Modal = (() => {
               placeholder="1" value="${p.executionDay || 1}" min="1" max="28">
             <div style="font-size:11px;color:#9CA3AF;margin-top:3px;">建議 1–28，避免月底問題</div>
           </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">手續費 (${isTW ? 'NT$' : '$'}) <span style="font-size:11px;color:#9CA3AF;font-weight:400;">（選填）</span></label>
+          <input type="number" id="dca-fee" class="form-input" placeholder="0" value="${p.fee || ''}" min="0" step="1">
         </div>
         <div class="form-group">
           <label class="form-label">扣款銀行（選填）</label>
@@ -1024,6 +1026,7 @@ const Modal = (() => {
     const name        = document.getElementById('dca-name').value.trim();
     const monthlyAmount = parseFloat(document.getElementById('dca-amount').value || 0);
     const executionDay  = parseInt(document.getElementById('dca-day').value || 1);
+    const fee         = parseFloat(document.getElementById('dca-fee')?.value || 0) || 0;
     const bankId      = document.getElementById('dca-bank').value || null;
     const cardId      = document.getElementById('dca-card')?.value || null;
     const note        = document.getElementById('dca-note').value.trim();
@@ -1032,7 +1035,7 @@ const Modal = (() => {
     if (!monthlyAmount || monthlyAmount <= 0) { Utils.showToast('請填寫有效投入金額'); return; }
     if (executionDay < 1 || executionDay > 28) { Utils.showToast('執行日請填 1–28'); return; }
 
-    const data = { market, symbol, name: name || symbol, monthlyAmount, executionDay, bankId, cardId: cardId || null, note };
+    const data = { market, symbol, name: name || symbol, monthlyAmount, executionDay, fee, bankId, cardId: cardId || null, note };
     if (existingId) {
       Store.updateDcaPlan(existingId, data);
       Utils.showToast('已更新');
@@ -1246,7 +1249,7 @@ const Modal = (() => {
         <div id="dca-calc-preview" style="background:#F0FDF4;padding:12px 14px;border-radius:8px;font-size:13px;color:#065F46;display:none;"></div>
         <div class="form-group" style="margin-top:12px;">
           <label class="form-label">手續費 (${isTW ? 'NT$' : '$'})</label>
-          <input type="number" id="dca-exec-fee" class="form-input" placeholder="0" value="0" min="0" step="1"
+          <input type="number" id="dca-exec-fee" class="form-input" placeholder="0" value="${plan.fee || 0}" min="0" step="1"
             oninput="Modal._calcDcaShares('${plan.market}', ${plan.monthlyAmount})">
         </div>
       </div>

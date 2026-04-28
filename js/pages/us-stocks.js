@@ -198,6 +198,24 @@ const PageUSStocks = (() => {
         ? `<div style="font-size:10px;background:#EDE9FE;color:#5B21B6;padding:1px 5px;border-radius:4px;margin-top:2px;white-space:nowrap;">💵 Ex ${exDate}</div>`
         : '';
 
+      // Inline trade history rows for this symbol
+      const symbolTrades = Store.getStockTrades(MARKET).filter(t => t.symbol === h.symbol).slice().reverse();
+      const tradeDetailRows = symbolTrades.map(t => {
+        const gross = t.quantity * t.price;
+        const net = t.action === 'buy' ? gross + (t.fee||0) : gross - (t.fee||0);
+        return `
+          <tr>
+            <td style="white-space:nowrap;">${Utils.formatDate(t.date)}</td>
+            <td class="text-center"><span class="badge ${t.action==='buy'?'badge-buy':'badge-sell'}">${t.action==='buy'?'Buy':'Sell'}</span></td>
+            <td class="text-right">${Utils.formatShares(t.quantity)}</td>
+            <td class="text-right">${Utils.formatUSD(t.price)}</td>
+            <td class="text-right" style="color:#9CA3AF;">${Utils.formatUSD(t.fee||0)}</td>
+            <td class="text-right" style="font-weight:600;color:${t.action==='buy'?'#EF4444':'#10B981'};">
+              ${t.action==='buy'?'-':'+'}${Utils.formatUSD(net)}
+            </td>
+          </tr>`;
+      }).join('');
+
       return `
         <tr>
           <td>
@@ -223,6 +241,24 @@ const PageUSStocks = (() => {
           <td class="text-center">
             <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openAddTrade('${h.symbol}','${h.name}')">交易</button>
             <button class="btn btn-secondary btn-sm" style="margin-left:4px;color:#8B5CF6;" onclick="PageUSStocks.openAddDividendFor('${h.symbol}')">股利</button>
+            <button id="us-holding-arrow-${h.symbol}" class="btn btn-secondary btn-sm" style="margin-left:4px;" onclick="PageUSStocks.toggleHoldingTrades('${h.symbol}')">▼</button>
+          </td>
+        </tr>
+        <tr id="us-holding-trades-${h.symbol}" style="display:none;">
+          <td colspan="8" style="padding:0;background:#F8FAFC;">
+            <div style="padding:10px 16px 14px;border-top:1px solid #E2E8F0;">
+              ${symbolTrades.length === 0
+                ? '<div style="text-align:center;color:#9CA3AF;font-size:13px;padding:6px 0;">尚無交易紀錄</div>'
+                : `<table class="data-table" style="font-size:12px;">
+                    <thead><tr>
+                      <th>日期</th><th class="text-center">買賣</th>
+                      <th class="text-right">股數</th><th class="text-right">成交價</th>
+                      <th class="text-right">手續費</th><th class="text-right">金額</th>
+                    </tr></thead>
+                    <tbody>${tradeDetailRows}</tbody>
+                  </table>`
+              }
+            </div>
           </td>
         </tr>
       `;
@@ -614,6 +650,15 @@ const PageUSStocks = (() => {
     if (plan) Modal.openDcaExecute(plan, _refresh);
   }
 
+  function toggleHoldingTrades(symbol) {
+    const row = document.getElementById('us-holding-trades-' + symbol);
+    const btn = document.getElementById('us-holding-arrow-' + symbol);
+    if (!row) return;
+    const isOpen = row.style.display !== 'none';
+    row.style.display = isOpen ? 'none' : '';
+    if (btn) btn.textContent = isOpen ? '▼' : '▲';
+  }
+
   function _refresh() {
     render();
   }
@@ -656,6 +701,7 @@ const PageUSStocks = (() => {
     openAddDividend, openAddDividendFor, openEditDividend, delDividend,
     openImport,
     openAddDca, openEditDca, delDca, toggleDca, executeDca,
+    toggleHoldingTrades,
     refreshPrices,
   };
 })();
