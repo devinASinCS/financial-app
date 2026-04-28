@@ -80,6 +80,42 @@ export default {
         return jsonResp({ ok: !!name, name });
       }
 
+      if (action === 'add_transaction') {
+        // Optional secret guard — set ADD_TX_SECRET in Cloudflare Worker env vars
+        if (env.ADD_TX_SECRET && body.secret !== env.ADD_TX_SECRET) {
+          return jsonResp({ ok: false, error: 'Unauthorized' }, 403);
+        }
+        if (!env.CASHIO_KV) {
+          return jsonResp({ ok: false, error: 'CASHIO_KV not configured' }, 500);
+        }
+        const tx = body.transaction;
+        if (!tx || typeof tx.amount !== 'number' || !tx.date) {
+          return jsonResp({ ok: false, error: 'transaction.amount (number) and transaction.date (YYYY-MM-DD) required' }, 400);
+        }
+        const raw  = await env.CASHIO_KV.get('backup');
+        const data = raw ? JSON.parse(raw) : {};
+        if (!Array.isArray(data.transactions)) data.transactions = [];
+
+        const newTx = {
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+          date:          tx.date,
+          type:          'expense',
+          amount:        tx.amount,
+          category:      tx.category || '其他',
+          note:          tx.note     || '',
+          source:        'email_import',
+          paymentMethod: 'credit_card',
+          bankId:        tx.bankId   || null,
+          cardId:        tx.cardId   || null,
+          eventId:       null,
+          foreignAmount: null, foreignCurrency: null, exchangeRate: null,
+        };
+        data.transactions.push(newTx);
+        data._savedAt = new Date().toISOString();
+        await env.CASHIO_KV.put('backup', JSON.stringify(data));
+        return jsonResp({ ok: true, transaction: newTx });
+      }
+
       return jsonResp({ ok: false, error: `Unknown action: ${action}` }, 400);
     } catch (e) {
       return jsonResp({ ok: false, error: e.message }, 500);

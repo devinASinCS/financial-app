@@ -128,6 +128,32 @@ const PageSettings = (() => {
     }
   }
 
+  // ── Email import log ─────────────────────────────────────────────
+  function _renderEmailImportLog() {
+    const txs = Store.getTransactions().filter(t => t.source === 'email_import');
+    if (txs.length === 0) return '';
+    const recent = txs.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+    const rows = recent.map(t => `
+      <tr>
+        <td style="white-space:nowrap;font-size:12px;">${Utils.formatDate(t.date)}</td>
+        <td style="font-size:12px;">${t.note || '-'}</td>
+        <td style="font-size:12px;color:#6b7280;">${t.category}</td>
+        <td style="text-align:right;font-size:12px;color:#ef4444;">-${Utils.formatTWD(t.amount)}</td>
+      </tr>`).join('');
+    return `
+      <div style="margin-top:14px;">
+        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">
+          📋 最近自動匯入（共 ${txs.length} 筆）
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" style="font-size:12px;">
+            <thead><tr><th>日期</th><th>備註</th><th>分類</th><th class="text-right">金額</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
   // ── Render ────────────────────────────────────────────────────────
   function render() {
     const txs    = Store.getTransactions();
@@ -272,6 +298,61 @@ const PageSettings = (() => {
             ⚠️ 請先輸入 Worker URL 才能使用雲端同步。部署步驟詳見專案內 <code>cloudflare-worker/</code> 說明。
           </p>
         </div>` : ''}
+      </div>
+
+      <!-- ── Email Auto-Import ── -->
+      <div class="card mb-6">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          <h3 class="section-title" style="margin:0;">📧 Email 自動匯入</h3>
+          <span style="font-size:11px;background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:12px;font-weight:600;">Google Apps Script</span>
+        </div>
+        <p style="font-size:14px;color:#6b7280;margin:8px 0 16px;">
+          信用卡消費通知寄到 Gmail 後，由 Google Apps Script 自動解析並寫入 Cashio，
+          App 開啟時同步即可看到新交易。
+        </p>
+
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px;">
+          <div style="font-weight:600;color:#1e293b;margin-bottom:12px;font-size:14px;">⚙️ 設定步驟</div>
+          <ol style="font-size:13px;color:#374151;line-height:2;margin:0;padding-left:20px;">
+            <li>前往 <a href="https://script.google.com" target="_blank" style="color:#2563eb;">script.google.com</a> → 建立新專案</li>
+            <li>將專案根目錄的 <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px;">gas-email-importer.gs</code> 全部內容貼入</li>
+            <li>修改腳本頂部 <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px;">CONFIG.workerUrl</code> 填入你的 Worker URL（同下方設定）</li>
+            <li>執行一次 <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px;">setupTrigger()</code> 安裝定時觸發器</li>
+            <li>依提示授予 Gmail 存取權限</li>
+            <li>執行 <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px;">testLatestEmail()</code> 測試解析結果</li>
+          </ol>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+          <div style="background:#eff6ff;border-radius:8px;padding:12px;">
+            <div style="font-size:12px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">✅ 支援銀行</div>
+            <div style="font-size:12px;color:#1e40af;line-height:1.8;">
+              國泰世華・玉山銀行<br>
+              中信銀行・台新銀行<br>
+              富邦銀行・永豐銀行<br>
+              聯邦銀行・LINE Pay
+            </div>
+          </div>
+          <div style="background:#fefce8;border-radius:8px;padding:12px;">
+            <div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:6px;">💡 若你的銀行不在列表</div>
+            <div style="font-size:12px;color:#78350f;line-height:1.8;">
+              在 GAS 腳本的<br>
+              <code style="background:#fde68a;padding:1px 4px;border-radius:3px;">BANK_PARSERS</code> 陣列<br>
+              仿照現有格式新增即可
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;">
+          <p style="font-size:13px;color:#166534;margin:0;">
+            🔒 <strong>安全性：</strong>可在 Cloudflare Worker 環境變數中設定
+            <code style="background:#dcfce7;padding:1px 5px;border-radius:4px;">ADD_TX_SECRET</code>，
+            並在 GAS 腳本的 <code style="background:#dcfce7;padding:1px 5px;border-radius:4px;">CONFIG.secret</code> 填入相同值，
+            防止未授權的寫入請求。
+          </p>
+        </div>
+
+        ${_renderEmailImportLog()}
       </div>
 
       <!-- ── Danger Zone ── -->
