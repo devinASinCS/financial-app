@@ -154,6 +154,58 @@ export default {
         return jsonResp({ ok: true, count: newTxs.length });
       }
 
+      if (action === 'queue_stock_pdf') {
+        if (env.ADD_TX_SECRET && body.secret !== env.ADD_TX_SECRET) {
+          return jsonResp({ ok: false, error: 'Unauthorized' }, 403);
+        }
+        if (!env.CASHIO_KV) {
+          return jsonResp({ ok: false, error: 'CASHIO_KV not configured' }, 500);
+        }
+        if (!body.pdfBase64 || !body.emailDate) {
+          return jsonResp({ ok: false, error: 'pdfBase64 and emailDate required' }, 400);
+        }
+        const raw = await env.CASHIO_KV.get('stock_pdf_queue');
+        const queue = raw ? JSON.parse(raw) : [];
+        const item = {
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          broker:    body.broker    || '未知券商',
+          emailDate: body.emailDate,
+          subject:   body.subject   || '',
+          fileName:  body.fileName  || 'statement.pdf',
+          pdfBase64: body.pdfBase64,
+          addedAt:   new Date().toISOString(),
+        };
+        queue.push(item);
+        await env.CASHIO_KV.put('stock_pdf_queue', JSON.stringify(queue));
+        return jsonResp({ ok: true, id: item.id });
+      }
+
+      if (action === 'get_stock_pdf_queue') {
+        if (!env.CASHIO_KV) {
+          return jsonResp({ ok: false, error: 'CASHIO_KV not configured' }, 500);
+        }
+        const raw = await env.CASHIO_KV.get('stock_pdf_queue');
+        const queue = raw ? JSON.parse(raw) : [];
+        if (body.metaOnly) {
+          return jsonResp({ ok: true, items: queue.map(({ id, broker, emailDate, subject, fileName, addedAt }) =>
+            ({ id, broker, emailDate, subject, fileName, addedAt })
+          )});
+        }
+        return jsonResp({ ok: true, items: queue });
+      }
+
+      if (action === 'clear_stock_pdf_item') {
+        if (!env.CASHIO_KV) {
+          return jsonResp({ ok: false, error: 'CASHIO_KV not configured' }, 500);
+        }
+        if (!body.itemId) return jsonResp({ ok: false, error: 'itemId required' }, 400);
+        const raw = await env.CASHIO_KV.get('stock_pdf_queue');
+        const queue = raw ? JSON.parse(raw) : [];
+        const filtered = queue.filter(item => item.id !== body.itemId);
+        await env.CASHIO_KV.put('stock_pdf_queue', JSON.stringify(filtered));
+        return jsonResp({ ok: true, removed: queue.length - filtered.length });
+      }
+
       return jsonResp({ ok: false, error: `Unknown action: ${action}` }, 400);
     } catch (e) {
       return jsonResp({ ok: false, error: e.message }, 500);

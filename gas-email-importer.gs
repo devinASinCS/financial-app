@@ -575,3 +575,172 @@ function clearProcessedIds() {
   PropertiesService.getScriptProperties().deleteProperty('processedIds');
   Logger.log('✅ 已清除 processedIds，所有符合郵件將在下次執行時重新處理。');
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 股票對帳單 PDF 自動匯入
+// ═══════════════════════════════════════════════════════════════════════════════
+// 設定步驟：
+// 1. 執行一次 setupStockTrigger() 安裝每日定時觸發器
+// 2. 收到對帳單信件後，GAS 自動上傳 PDF 至 Worker 佇列
+// 3. 前往 Cashio 設定頁面，輸入 PDF 密碼後點擊「解析並預覽」
+// 4. 確認解析結果後點擊匯入
+//
+// 測試：執行 testLatestStatement() 預覽偵測到的信件與附件（不上傳）
+// 重置：執行 clearProcessedStmtIds()
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var STOCK_SEARCH_QUERY = '(subject:對帳單 OR subject:月結單 OR subject:交割確認書 OR subject:交割帳單 OR subject:証券 OR subject:證券) has:attachment newer_than:35d';
+
+/**
+ * 主函式 — 每日自動執行，掃描對帳單信件並上傳 PDF 至 Worker 佇列。
+ */
+function importStockStatements() {
+  var props        = PropertiesService.getScriptProperties();
+  var processedIds = new Set(JSON.parse(props.getProperty('processedStmtIds') || '[]'));
+  var threads      = GmailApp.search(STOCK_SEARCH_QUERY, 0, 20);
+  var queued       = 0;
+  var skipped      = 0;
+
+  for (var ti = 0; ti < threads.length; ti++) {
+    var msgs = threads[ti].getMessages();
+    for (var mi = 0; mi < msgs.length; mi++) {
+      var msg   = msgs[mi];
+      var msgId = msg.getId();
+      if (processedIds.has(msgId)) continue;
+
+      var attachments = msg.getAttachments({ includeInlineImages: false });
+      var pdfs = attachments.filter(function(a) {
+        return a.getContentType() === 'application/pdf' ||
+               a.getName().toLowerCase().slice(-4) === '.pdf';
+      });
+
+      processedIds.add(msgId);
+
+      if (pdfs.length === 0) { skipped++; continue; }
+
+      var broker    = _detectBroker(msg.getFrom(), msg.getSubject());
+      var emailDate = toDateStr(msg.getDate());
+
+      for (var ai = 0; ai < pdfs.length; ai++) {
+        var att    = pdfs[ai];
+        var base64 = Utilities.base64Encode(att.getBytes());
+        var ok = _postStockPdf({
+          broker:    broker,
+          emailDate: emailDate,
+          subject:   msg.getSubject(),
+          fileName:  att.getName(),
+          pdfBase64: base64,
+        });
+        if (ok) {
+          queued++;
+          Logger.log('📎 已上傳：' + att.getName() + '（' + broker + '，' + Math.round(att.getSize() / 1024) + ' KB）');
+        }
+      }
+    }
+  }
+
+  // 儲存已處理 ID（保留最近 500 個）
+  var ids = [];
+  processedIds.forEach(function(id) { ids.push(id); });
+  props.setProperty('processedStmtIds', JSON.stringify(ids.slice(-500)));
+
+  Logger.log('✅ 股票對帳單：已上傳 ' + queued + ' 份 PDF，跳過 ' + skipped + ' 封無附件信件');
+}
+
+/**
+ * 依寄件人 / 主旨辨識券商名稱。
+ */
+function _detectBroker(from, subject) {
+  var s = ((from || '') + ' ' + (subject || '')).toLowerCase();
+  if (/yuanta|元大/.test(s))       return '元大證券';
+  if (/fubon|富邦/.test(s))         return '富邦證券';
+  if (/sinopac|永豐/.test(s))       return '永豐金證券';
+  if (/kgi|凱基/.test(s))           return '凱基證券';
+  if (/cathay|國泰/.test(s))        return '國泰證券';
+  if (/firstsec|第一金/.test(s))    return '第一金證券';
+  if (/masterlink|群益/.test(s))    return '群益證券';
+  if (/ib\.com|interactivebrokers/.test(from)) return 'Interactive Brokers';
+  return '未知券商';
+}
+
+/**
+ * 上傳一份 PDF 至 Cloudflare Worker 的對帳單佇列。
+ */
+function _postStockPdf(data) {
+  if (!CONFIG.workerUrl || CONFIG.workerUrl.indexOf('YOUR_WORKER') !== -1) {
+    Logger.log('❌ 尚未設定 CONFIG.workerUrl');
+    return false;
+  }
+  var payload = {
+    action:    'queue_stock_pdf',
+    broker:    data.broker,
+    emailDate: data.emailDate,
+    subject:   data.subject,
+    fileName:  data.fileName,
+    pdfBase64: data.pdfBase64,
+  };
+  if (CONFIG.secret) payload.secret = CONFIG.secret;
+
+  try {
+    var res  = UrlFetchApp.fetch(CONFIG.workerUrl, {
+      method:             'post',
+      contentType:        'application/json',
+      payload:            JSON.stringify(payload),
+      muteHttpExceptions: true,
+    });
+    var json = JSON.parse(res.getContentText());
+    if (!json.ok) { Logger.log('❌ 上傳失敗：' + json.error); return false; }
+    return true;
+  } catch (e) {
+    Logger.log('❌ 網路錯誤：' + e.message);
+    return false;
+  }
+}
+
+/**
+ * 安裝每日觸發器（每天早上 8 點執行 importStockStatements）。
+ */
+function setupStockTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'importStockStatements') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('importStockStatements')
+    .timeBased()
+    .everyDays(1)
+    .atHour(8)
+    .create();
+  Logger.log('✅ 股票對帳單觸發器已建立：每天早上 8 點執行 importStockStatements()');
+}
+
+/**
+ * 測試：預覽最新一封符合條件的對帳單信件（不上傳）。
+ */
+function testLatestStatement() {
+  var threads = GmailApp.search(STOCK_SEARCH_QUERY, 0, 1);
+  if (threads.length === 0) {
+    Logger.log('找不到符合條件的對帳單信件。請確認 STOCK_SEARCH_QUERY 設定。');
+    return;
+  }
+  var msg = threads[0].getMessages()[0];
+  Logger.log('寄件人：' + msg.getFrom());
+  Logger.log('主旨：'   + msg.getSubject());
+  Logger.log('券商：'   + _detectBroker(msg.getFrom(), msg.getSubject()));
+
+  var pdfs = msg.getAttachments({ includeInlineImages: false }).filter(function(a) {
+    return a.getName().toLowerCase().slice(-4) === '.pdf';
+  });
+  Logger.log('PDF 附件數：' + pdfs.length);
+  pdfs.forEach(function(p) {
+    Logger.log('  - ' + p.getName() + ' (' + Math.round(p.getSize() / 1024) + ' KB)');
+  });
+  Logger.log('（此為預覽，尚未上傳至 Worker）');
+}
+
+/**
+ * 清除對帳單已處理 ID 紀錄（用於重置）。
+ */
+function clearProcessedStmtIds() {
+  PropertiesService.getScriptProperties().deleteProperty('processedStmtIds');
+  Logger.log('✅ 已清除 processedStmtIds，所有對帳單信件將在下次執行時重新掃描。');
+}

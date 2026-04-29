@@ -154,6 +154,242 @@ const PageSettings = (() => {
       </div>`;
   }
 
+  // ── Stock PDF Import ──────────────────────────────────────────────
+  var _stockPdfItems  = [];  // [{id, broker, emailDate, subject, fileName, pdfBase64, addedAt}]
+  var _stockParsed    = [];  // [{...trade fields, _id, _checked, _srcId, _srcBroker}]
+
+  async function fetchStockPdfQueue() {
+    const workerUrl = NotionSync.getWorkerUrl();
+    if (!workerUrl) { Utils.showToast('請先設定 Worker URL'); return; }
+    const el = document.getElementById('stock-pdf-status');
+    if (el) el.textContent = '載入中...';
+    try {
+      const res  = await fetch(workerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_stock_pdf_queue' }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error);
+      _stockPdfItems = json.items || [];
+      const count = _stockPdfItems.length;
+      if (el) el.textContent = count === 0 ? '佇列為空，無待處理對帳單' : `取得 ${count} 份待處理對帳單`;
+      const wrap = document.getElementById('stock-pdf-password-wrap');
+      if (wrap) wrap.style.display = count > 0 ? '' : 'none';
+      const btn = document.getElementById('stock-parse-btn');
+      if (btn) btn.disabled = count === 0;
+    } catch (e) {
+      if (el) el.textContent = `錯誤：${e.message}`;
+    }
+  }
+
+  async function parseAndPreviewPdfs() {
+    if (!_stockPdfItems.length) { Utils.showToast('請先點擊「取得待處理對帳單」'); return; }
+    if (!window.pdfjsLib) { Utils.showToast('PDF.js 載入中，請稍後再試'); return; }
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const password  = (document.getElementById('stock-pdf-password') || {}).value || '';
+    const container = document.getElementById('stock-pdf-results');
+    if (container) container.innerHTML = '<p style="color:#6b7280;font-size:13px;padding:8px 0;">解析中，請稍候...</p>';
+    _stockParsed = [];
+    let errors = '';
+
+    for (const item of _stockPdfItems) {
+      try {
+        const text   = await _extractPdfText(item.pdfBase64, password);
+        const trades = _parseTWStockStatement(text, item.broker);
+        for (const t of trades) {
+          _stockParsed.push({
+            ...t,
+            _id:        Math.random().toString(36).slice(2),
+            _checked:   true,
+            _srcId:     item.id,
+            _srcBroker: item.broker,
+          });
+        }
+        if (trades.length === 0) errors += `<p style="color:#d97706;font-size:12px;">⚠️ ${item.fileName}：解析出 0 筆（格式不符或密碼錯誤）</p>`;
+      } catch (e) {
+        const isPwd = e.name === 'PasswordException' || /password/i.test(e.message);
+        errors += `<p style="color:#dc2626;font-size:12px;">❌ ${item.fileName}：${isPwd ? '密碼錯誤' : e.message}</p>`;
+      }
+    }
+    if (container) _renderStockParsedTrades(container, errors);
+  }
+
+  function toggleStockTrade(id) {
+    const t = _stockParsed.find(x => x._id === id);
+    if (t) t._checked = !t._checked;
+    const btn = document.getElementById('stock-import-btn');
+    if (btn) btn.textContent = `匯入選取的 ${_stockParsed.filter(x => x._checked).length} 筆`;
+  }
+
+  async function importSelectedStockTrades() {
+    const selected = _stockParsed.filter(t => t._checked);
+    if (!selected.length) { Utils.showToast('請先勾選要匯入的交易'); return; }
+
+    for (const t of selected) {
+      Store.addStockTrade({
+        date: t.date, symbol: t.symbol, name: t.name,
+        action: t.action, quantity: t.quantity, price: t.price,
+        fee: t.fee, tax: t.tax, market: t.market,
+      });
+    }
+
+    // 清除 Worker 佇列中已處理的項目
+    const workerUrl = NotionSync.getWorkerUrl();
+    if (workerUrl) {
+      const doneIds = [...new Set(selected.map(t => t._srcId))];
+      await Promise.all(doneIds.map(id =>
+        fetch(workerUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'clear_stock_pdf_item', itemId: id }),
+        }).catch(() => {})
+      ));
+      _stockPdfItems = _stockPdfItems.filter(item => !doneIds.includes(item.id));
+    }
+
+    _stockParsed = _stockParsed.filter(t => !t._checked);
+    Utils.showToast(`✅ 已匯入 ${selected.length} 筆股票交易`);
+    PageSettings.render();
+  }
+
+  async function _extractPdfText(base64Data, password) {
+    const binary = atob(base64Data);
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    const pdf = await pdfjsLib.getDocument({ data: bytes, password: password || undefined }).promise;
+    let text = '';
+
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page    = await pdf.getPage(p);
+      const content = await page.getTextContent();
+
+      // Group text items by Y coordinate to reconstruct table rows
+      const byY = {};
+      for (const item of content.items) {
+        if (!item.str) continue;
+        const y = Math.round(item.transform[5]);
+        (byY[y] = byY[y] || []).push({ x: item.transform[4], str: item.str });
+      }
+      const ys = Object.keys(byY).map(Number).sort((a, b) => b - a);
+      for (const y of ys) {
+        text += byY[y].sort((a, b) => a.x - b.x).map(i => i.str).join(' ') + '\n';
+      }
+    }
+    return text;
+  }
+
+  function _parseTWStockStatement(text, broker) {
+    const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const raw   = [];
+
+    for (const line of lines) {
+      const t = _tryParseTradeRow(line);
+      if (t) raw.push(t);
+    }
+
+    // Deduplicate by date+symbol+qty+price+action
+    const seen = new Set();
+    return raw.filter(t => {
+      const k = `${t.date}|${t.symbol}|${t.quantity}|${t.price}|${t.action}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+
+  function _tryParseTradeRow(line) {
+    // Match: YYYY/MM/DD  symbol  [Chinese name]  買進/賣出  qty  price  [remaining numbers]
+    const m = line.match(
+      /(\d{4}[\/\-]\d{2}[\/\-]\d{2})\s+(\d{4,6})\s*([一-鿿\w]*(?:\s[一-鿿\w]+)*?)\s*(買進?|賣出?)\s+([\d,]+)\s+([\d,]+(?:\.\d+)?)((?:\s+[\d,]+)*)/
+    );
+    if (!m) return null;
+
+    const [, dateStr, symbol, nameRaw, actionStr, qtyStr, priceStr, restStr] = m;
+    const qty   = parseInt(qtyStr.replace(/,/g, ''), 10);
+    const price = parseFloat(priceStr.replace(/,/g, ''));
+    if (!qty || !price || price <= 0 || price > 200000) return null;
+
+    const action    = /買/.test(actionStr) ? 'buy' : 'sell';
+    const totalAmt  = qty * price;
+
+    // Extract fee and tax from the remaining numbers (filter out settlement amount)
+    const others = (restStr || '').match(/[\d,]+/g)
+      ?.map(n => parseInt(n.replace(/,/g, ''), 10))
+      .filter(n => n > 0 && Math.abs(n - totalAmt) > totalAmt * 0.05) || [];
+
+    let fee = 0, tax = 0;
+    if (others.length >= 2) { fee = others[0]; tax = others[1]; }
+    else if (others.length === 1) { fee = others[0]; }
+    else {
+      // Estimate from standard TW rates if not found in text
+      fee = Math.max(20, Math.round(totalAmt * 0.001425));
+      tax = action === 'sell' ? Math.round(totalAmt * 0.003) : 0;
+    }
+
+    return {
+      date:     dateStr.replace(/\//g, '-'),
+      symbol,
+      name:     nameRaw.trim() || symbol,
+      action,
+      quantity: qty,
+      price,
+      fee,
+      tax,
+      market:   'TW',
+    };
+  }
+
+  function _renderStockParsedTrades(container, extraHtml = '') {
+    if (_stockParsed.length === 0) {
+      container.innerHTML = extraHtml +
+        '<p style="color:#6b7280;font-size:13px;padding:8px 0;">沒有解析到任何交易記錄。' +
+        '請確認 PDF 密碼，或執行 GAS 中的 testLatestStatement() 確認附件格式。</p>';
+      return;
+    }
+    const count = _stockParsed.filter(t => t._checked).length;
+    const rows  = _stockParsed.map(t => `
+      <tr>
+        <td style="text-align:center;">
+          <input type="checkbox" ${t._checked ? 'checked' : ''}
+            onchange="PageSettings.toggleStockTrade('${t._id}')">
+        </td>
+        <td style="font-size:12px;white-space:nowrap;">${t.date}</td>
+        <td style="font-size:12px;font-weight:600;">${t.symbol}</td>
+        <td style="font-size:12px;">${t.name}</td>
+        <td style="font-size:12px;color:${t.action === 'buy' ? '#16a34a' : '#dc2626'};font-weight:600;">
+          ${t.action === 'buy' ? '買進' : '賣出'}
+        </td>
+        <td style="font-size:12px;text-align:right;">${t.quantity.toLocaleString()}</td>
+        <td style="font-size:12px;text-align:right;">${t.price.toFixed(2)}</td>
+        <td style="font-size:12px;text-align:right;">${t.fee.toLocaleString()}</td>
+        <td style="font-size:12px;text-align:right;">${t.tax.toLocaleString()}</td>
+        <td style="font-size:12px;color:#6b7280;">${t._srcBroker}</td>
+      </tr>`).join('');
+
+    container.innerHTML = extraHtml + `
+      <div style="overflow-x:auto;margin-top:8px;">
+        <table class="data-table" style="font-size:12px;min-width:600px;">
+          <thead><tr>
+            <th></th><th>日期</th><th>代號</th><th>名稱</th><th>買賣</th>
+            <th class="text-right">股數</th><th class="text-right">單價</th>
+            <th class="text-right">手續費</th><th class="text-right">稅</th><th>券商</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
+        <button id="stock-import-btn" class="btn btn-primary"
+          onclick="PageSettings.importSelectedStockTrades()">
+          匯入選取的 ${count} 筆
+        </button>
+        <span style="font-size:12px;color:#6b7280;">共解析出 ${_stockParsed.length} 筆</span>
+      </div>`;
+  }
+
   // ── Render ────────────────────────────────────────────────────────
   function render() {
     const txs    = Store.getTransactions();
@@ -355,6 +591,71 @@ const PageSettings = (() => {
         ${_renderEmailImportLog()}
       </div>
 
+      <!-- ── Stock PDF Import ── -->
+      <div class="card mb-6">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          <h3 class="section-title" style="margin:0;">📄 股票對帳單 PDF 匯入</h3>
+          <span style="font-size:11px;background:#ede9fe;color:#5b21b6;padding:2px 8px;border-radius:12px;font-weight:600;">PDF 解析</span>
+        </div>
+        <p style="font-size:14px;color:#6b7280;margin:8px 0 16px;">
+          Google Apps Script 自動擷取券商對帳單 PDF 信件並上傳至 Worker 佇列。
+          在此輸入 PDF 密碼即可解析、預覽並批次匯入台股交易記錄。
+        </p>
+
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px;">
+          <div style="font-weight:600;color:#1e293b;margin-bottom:12px;font-size:14px;">⚙️ 設定步驟</div>
+          <ol style="font-size:13px;color:#374151;line-height:2;margin:0;padding-left:20px;">
+            <li>將 <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px;">gas-email-importer.gs</code> 貼入 Google Apps Script（已包含對帳單函式）</li>
+            <li>執行一次 <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px;">setupStockTrigger()</code> 安裝每日觸發器</li>
+            <li>收到對帳單後 GAS 自動上傳 PDF 至 Worker；回到此頁點擊下方按鈕取得佇列</li>
+            <li>輸入 PDF 密碼（通常為身份證字號或生日），點擊「解析並預覽」</li>
+            <li>確認解析結果無誤後點擊「匯入」</li>
+          </ol>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <button class="btn btn-secondary" onclick="PageSettings.fetchStockPdfQueue()">
+            🔄 取得待處理對帳單
+          </button>
+          <span id="stock-pdf-status" style="font-size:13px;color:#6b7280;">點擊按鈕從 Worker 取得佇列</span>
+        </div>
+
+        <div id="stock-pdf-password-wrap" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <label style="font-size:13px;font-weight:600;white-space:nowrap;">🔑 PDF 密碼：</label>
+            <input type="password" id="stock-pdf-password" class="form-input"
+              placeholder="身份證字號 / 生日（格式依券商規定）"
+              style="max-width:280px;flex:1;">
+            <button id="stock-parse-btn" class="btn btn-primary" disabled
+              onclick="PageSettings.parseAndPreviewPdfs()">
+              🔍 解析並預覽
+            </button>
+          </div>
+          <p style="font-size:11px;color:#166534;margin:6px 0 0;">
+            密碼僅用於本次瀏覽器端解析，不會傳送至任何伺服器或儲存
+          </p>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+          <div style="background:#eff6ff;border-radius:8px;padding:12px;">
+            <div style="font-size:12px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">✅ 支援券商（通用格式）</div>
+            <div style="font-size:12px;color:#1e40af;line-height:1.8;">
+              元大・富邦・永豐金・凱基<br>國泰・第一金・群益（及其他）
+            </div>
+          </div>
+          <div style="background:#fefce8;border-radius:8px;padding:12px;">
+            <div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:6px;">💡 PDF 解析失敗？</div>
+            <div style="font-size:12px;color:#78350f;line-height:1.8;">
+              執行 GAS 中的<br>
+              <code style="background:#fde68a;padding:1px 4px;border-radius:3px;">testLatestStatement()</code><br>
+              確認信件格式與附件
+            </div>
+          </div>
+        </div>
+
+        <div id="stock-pdf-results"></div>
+      </div>
+
       <!-- ── Danger Zone ── -->
       <div class="card" style="border:1px solid #fecaca;">
         <h3 class="section-title" style="color:#dc2626;">⚠️ 危險操作</h3>
@@ -370,5 +671,6 @@ const PageSettings = (() => {
     render,
     exportJSON, triggerImport, clearAllData,
     saveWorkerUrl, testConnection, notionSave, notionLoad, toggleAutoSync,
+    fetchStockPdfQueue, parseAndPreviewPdfs, toggleStockTrade, importSelectedStockTrades,
   };
 })();
