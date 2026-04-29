@@ -5,10 +5,11 @@
 const NotionSync = (() => {
 
   const KEYS = {
-    workerUrl:   'fm_notion_worker_url',
-    lastSync:    'fm_notion_last_sync',
-    lastSyncDir: 'fm_notion_last_sync_dir', // 'save' | 'load'
-    autoSync:    'fm_notion_auto_sync',
+    workerUrl:      'fm_notion_worker_url',
+    lastSync:       'fm_notion_last_sync',
+    lastSyncDir:    'fm_notion_last_sync_dir', // 'save' | 'load'
+    autoSync:       'fm_notion_auto_sync',
+    lastServerSave: 'fm_last_server_save', // server-acknowledged timestamp of our last successful save
   };
 
   // ── Config ───────────────────────────────────────────────────────
@@ -71,10 +72,15 @@ const NotionSync = (() => {
       if (!result.data || !result.data._savedAt) return;
 
       const remoteTs = new Date(result.data._savedAt).getTime();
-      const localStr = localStorage.getItem('fm_last_modified');
-      if (localStr && new Date(localStr).getTime() >= remoteTs) return; // already up-to-date
+      // Compare against server-acknowledged save timestamp to avoid clock-skew false positives.
+      // fm_last_server_save is set only when we receive a confirmed savedAt from the Worker,
+      // so it's always a server-side timestamp — safe to compare with _savedAt.
+      const lastKnown = localStorage.getItem(KEYS.lastServerSave);
+      if (lastKnown && new Date(lastKnown).getTime() >= remoteTs) return; // already up-to-date
 
       Store.importData(result.data);
+      // Record the server timestamp of this version so future startups skip re-importing it.
+      localStorage.setItem(KEYS.lastServerSave, result.data._savedAt);
       _recordSync('load');
       _updateSyncBadge();
       window.dispatchEvent(new Event('hashchange'));
@@ -120,6 +126,8 @@ const NotionSync = (() => {
   async function save() {
     const data = Store.exportData();
     const result = await _request({ action: 'save', data });
+    // Store the server's returned timestamp so syncOnStart() can compare purely server-side.
+    if (result.savedAt) localStorage.setItem(KEYS.lastServerSave, result.savedAt);
     _recordSync('save');
     return result;
   }

@@ -39,10 +39,12 @@ const Store = (() => {
     try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
     catch { return fallback; }
   }
+  let _suppressAutoSave = false;
+
   function save(key, data) {
     localStorage.setItem(key, JSON.stringify(data));
     localStorage.setItem('fm_last_modified', new Date().toISOString());
-    if (typeof NotionSync !== 'undefined' && NotionSync.scheduleAutoSave) {
+    if (!_suppressAutoSave && typeof NotionSync !== 'undefined' && NotionSync.scheduleAutoSave) {
       NotionSync.scheduleAutoSave();
     }
   }
@@ -547,9 +549,12 @@ const Store = (() => {
    * Returns { ok: true, counts } on success, { ok: false, error } on failure.
    */
   function importData(obj) {
+    // Suppress auto-save during import: the data came from the server, no need to echo it back.
+    // Allowing auto-save here would update _savedAt to the local clock, causing other devices
+    // to think this device has "newer" data and incorrectly overwrite their local changes.
+    _suppressAutoSave = true;
     try {
       if (!obj || typeof obj !== 'object') throw new Error('無效的資料格式');
-      // Write each key if present in backup
       if (Array.isArray(obj.transactions))  save(KEYS.transactions,  obj.transactions);
       if (Array.isArray(obj.stockTrades))   save(KEYS.stockTrades,   obj.stockTrades);
       if (Array.isArray(obj.dividends))     save(KEYS.dividends,     obj.dividends);
@@ -571,6 +576,8 @@ const Store = (() => {
       };
     } catch (e) {
       return { ok: false, error: e.message };
+    } finally {
+      _suppressAutoSave = false;
     }
   }
 
