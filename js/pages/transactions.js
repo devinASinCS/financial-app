@@ -118,7 +118,6 @@ const PageTransactions = (() => {
       <div class="tx-tab-strip">
         ${tabs.map(t =>
           `<button class="tx-tab-btn${_tab === t.id ? ' active' : ''}"
-            style="flex:none;white-space:nowrap;"
             onclick="PageTransactions.setTab('${t.id}')">${t.label}</button>`
         ).join('')}
       </div>`;
