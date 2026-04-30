@@ -743,6 +743,14 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 .tx-cal-day:active { transform: scale(0.88); }
+.tx-tab-strip {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  border-bottom: 2px solid #f1f5f9;
+}
+.tx-tab-strip::-webkit-scrollbar { display: none; }
 .tx-tab-btn {
   flex: 1;
   padding: 9px 4px;
@@ -756,4 +764,6 @@ body {
   transition: color 0.15s, border-color 0.15s;
 }
 .tx-tab-btn.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+
+
 
