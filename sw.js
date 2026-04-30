@@ -1,7 +1,7 @@
 /**
  * Service Worker — offline caching for PWA
  */
-const CACHE_NAME = 'cashio-v1';
+const CACHE_NAME = 'cashio-v2';
 
 // Files to cache for offline use
 const STATIC_ASSETS = [
@@ -71,23 +71,38 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // All other requests: cache-first strategy
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
+  const isCDN = CDN_ASSETS.some(a => request.url.startsWith(a.split('/').slice(0, 3).join('/')));
 
-      return fetch(request).then((response) => {
-        // Cache successful responses for local assets
-        if (response.ok && (url.origin === self.location.origin || CDN_ASSETS.some(a => request.url.startsWith(a.split('/').slice(0, 3).join('/'))))) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
-        return response;
-      }).catch(() => {
-        // Offline fallback: serve index.html for navigation requests
-        if (request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
+  if (isCDN) {
+    // CDN assets: cache-first (URLs are versioned, never stale)
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        });
+      })
+    );
+    return;
+  }
+
+  // Local assets: network-first so updates always reach the user when online
+  event.respondWith(
+    fetch(request).then((response) => {
+      if (response.ok) {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+      }
+      return response;
+    }).catch(() => {
+      // Offline fallback: serve from cache
+      return caches.match(request).then((cached) => {
+        if (cached) return cached;
+        if (request.mode === 'navigate') return caches.match('./index.html');
       });
     })
   );
