@@ -33,17 +33,17 @@ const PageUSStocks = (() => {
       ` : ''}
 
       <!-- Summary Cards -->
-      <div class="grid-4" style="margin-bottom:20px;" id="us-summary-cards"></div>
+      <div class="stock-summary-grid" style="margin-bottom:16px;" id="us-summary-cards"></div>
 
       <!-- Tabs -->
       <div class="tab-bar">
         <button class="tab-btn ${_activeTab==='holdings'?'active':''}" onclick="PageUSStocks.switchTab('holdings')">📋 持股</button>
-        <button class="tab-btn ${_activeTab==='trades'?'active':''}" onclick="PageUSStocks.switchTab('trades')">🔄 交易紀錄</button>
+        <button class="tab-btn ${_activeTab==='trades'?'active':''}" onclick="PageUSStocks.switchTab('trades')">🔄 交易</button>
         <button class="tab-btn ${_activeTab==='dividends'?'active':''}" onclick="PageUSStocks.switchTab('dividends')">💵 股利</button>
         <button class="tab-btn ${_activeTab==='dca'?'active':''}" onclick="PageUSStocks.switchTab('dca')">
-          📅 定期定額${pendingDca.length > 0 ? ` <span style="background:#EF4444;color:white;border-radius:10px;padding:1px 6px;font-size:10px;">${pendingDca.length}</span>` : ''}
+          📅 定額${pendingDca.length > 0 ? ` <span style="background:#EF4444;color:white;border-radius:10px;padding:1px 6px;font-size:10px;">${pendingDca.length}</span>` : ''}
         </button>
-        <button class="tab-btn ${_activeTab==='pnl'?'active':''}" onclick="PageUSStocks.switchTab('pnl')">📈 損益走勢</button>
+        <button class="tab-btn ${_activeTab==='pnl'?'active':''}" onclick="PageUSStocks.switchTab('pnl')">📈 損益</button>
       </div>
 
       <div id="us-tab-content"></div>
@@ -53,7 +53,6 @@ const PageUSStocks = (() => {
     _renderActionBtns();
     _renderTab();
 
-    // Auto-fetch closing prices after market hours if cache is stale
     if (!_autoFetchDone) {
       _autoFetchDone = true;
       setTimeout(() => {
@@ -76,7 +75,6 @@ const PageUSStocks = (() => {
     const realizedPnL = realized.reduce((s, r) => s + r.pnl, 0);
     const divIncome   = divs.reduce((s, d) => s + (d.cashTotal || 0), 0);
 
-    // Compute market value from cached prices
     let totalMarketValue = 0;
     let priceCount = 0;
     holdings.forEach(h => {
@@ -96,9 +94,7 @@ const PageUSStocks = (() => {
       <div class="card">
         <div class="card-title">持股成本</div>
         <div class="stat-value">${Utils.formatUSD(totalCost)}</div>
-        <div class="stat-sub">${hasPrices
-          ? '市值 ' + Utils.formatUSD(totalMarketValue)
-          : holdings.length + ' 檔持股'}</div>
+        <div class="stat-sub">${hasPrices ? '市值 ' + Utils.formatUSD(totalMarketValue) : holdings.length + ' 檔持股'}</div>
       </div>
       <div class="card">
         <div class="card-title">未實現損益</div>
@@ -124,9 +120,9 @@ const PageUSStocks = (() => {
 
   function _renderActionBtns() {
     const btns = {
-      holdings:  `<button class="btn btn-secondary" onclick="PageUSStocks.openImport()">📥 匯入對帳單</button>
+      holdings:  `<button class="btn btn-secondary" onclick="PageUSStocks.openImport()">📥 匯入</button>
                   <button class="btn btn-primary" onclick="PageUSStocks.openAddTrade()">＋ 新增交易</button>`,
-      trades:    `<button class="btn btn-secondary" onclick="PageUSStocks.openImport()">📥 匯入對帳單</button>
+      trades:    `<button class="btn btn-secondary" onclick="PageUSStocks.openImport()">📥 匯入</button>
                   <button class="btn btn-primary" onclick="PageUSStocks.openAddTrade()">＋ 新增交易</button>`,
       dividends: `<button class="btn btn-primary" onclick="PageUSStocks.openAddDividend()">＋ 新增股利</button>`,
       dca:       `<button class="btn btn-primary" onclick="PageUSStocks.openAddDca()">＋ 新增定期定額</button>`,
@@ -161,14 +157,11 @@ const PageUSStocks = (() => {
 
     if (holdings.length === 0) {
       container.innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-          <div class="card"><div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-text">尚無持股，請新增交易紀錄</div></div></div>
-          <div class="card"><div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">持股分布圖</div></div></div>
-        </div>`;
+        <div class="card"><div class="empty-state"><div class="empty-state-icon">📋</div>
+        <div class="empty-state-text">尚無持股，請新增交易紀錄</div></div></div>`;
       return;
     }
 
-    // Last price update timestamp
     const fetchTimes = holdings
       .map(h => priceCache[h.symbol]?.fetchedAt)
       .filter(Boolean)
@@ -178,93 +171,80 @@ const PageUSStocks = (() => {
       ? new Date(lastUpdateMs).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
       : null;
 
-    // Build table rows with live price columns
-    const tableRows = holdings.map(h => {
+    const holdingCards = holdings.map(h => {
       const p             = priceCache[h.symbol];
       const hasPrice      = p && p.price && !p.error;
       const currentPrice  = hasPrice ? p.price : null;
       const marketValue   = currentPrice !== null ? currentPrice * h.quantity : null;
       const unrealizedPnL = marketValue !== null ? marketValue - h.totalCost : null;
       const unrealizedPct = h.totalCost > 0 && unrealizedPnL !== null ? unrealizedPnL / h.totalCost * 100 : null;
+      const changePct     = hasPrice && p.changePercent !== undefined ? p.changePercent : null;
+      const exDate        = hasPrice && p.exDividendDate ? p.exDividendDate : null;
 
-      const changePct  = hasPrice && p.changePercent !== undefined ? p.changePercent : null;
-      const changeHtml = changePct !== null
-        ? `<div style="font-size:11px;${changePct >= 0 ? 'color:#10B981' : 'color:#EF4444'};">${changePct >= 0 ? '▲' : '▼'} ${Math.abs(changePct).toFixed(2)}%</div>`
-        : '';
-
-      // Upcoming ex-dividend date from Yahoo quote data
-      const exDate   = hasPrice && p.exDividendDate ? p.exDividendDate : null;
-      const exBadge  = exDate
-        ? `<div style="font-size:10px;background:#EDE9FE;color:#5B21B6;padding:1px 5px;border-radius:4px;margin-top:2px;white-space:nowrap;">💵 Ex ${exDate}</div>`
-        : '';
-
-      // Inline trade history rows for this symbol
       const symbolTrades = Store.getStockTrades(MARKET).filter(t => t.symbol === h.symbol).slice().reverse();
-      const tradeDetailRows = symbolTrades.map(t => {
+      const tradeRows = symbolTrades.map(t => {
         const gross = t.quantity * t.price;
-        const net = t.action === 'buy' ? gross + (t.fee||0) : gross - (t.fee||0);
-        return `
-          <tr>
-            <td style="white-space:nowrap;">${Utils.formatDate(t.date)}</td>
-            <td class="text-center"><span class="badge ${t.action==='buy'?'badge-buy':'badge-sell'}">${t.action==='buy'?'Buy':'Sell'}</span></td>
-            <td class="text-right">${Utils.formatShares(t.quantity)}</td>
-            <td class="text-right">${Utils.formatUSD(t.price)}</td>
-            <td class="text-right" style="color:#9CA3AF;">${Utils.formatUSD(t.fee||0)}</td>
-            <td class="text-right" style="font-weight:600;color:${t.action==='buy'?'#EF4444':'#10B981'};">
-              ${t.action==='buy'?'-':'+'}${Utils.formatUSD(net)}
-            </td>
-          </tr>`;
+        const net   = t.action === 'buy' ? gross + (t.fee || 0) : gross - (t.fee || 0);
+        return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #f1f5f9;">
+          <span class="badge ${t.action === 'buy' ? 'badge-buy' : 'badge-sell'}" style="flex-shrink:0;">${t.action === 'buy' ? 'Buy' : 'Sell'}</span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;color:#374151;">${Utils.formatDate(t.date)} · ${Utils.formatShares(t.quantity)}股</div>
+            <div style="font-size:11px;color:#94a3b8;">@ ${Utils.formatUSD(t.price)}${t.fee ? ' · fee ' + Utils.formatUSD(t.fee) : ''}</div>
+          </div>
+          <div style="font-size:13px;font-weight:700;color:${t.action === 'buy' ? '#ef4444' : '#10b981'};flex-shrink:0;">${t.action === 'buy' ? '-' : '+'}${Utils.formatUSD(net)}</div>
+          <div style="display:flex;gap:2px;flex-shrink:0;">
+            <button onclick="event.stopPropagation();PageUSStocks.openEditTrade('${t.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">✏️</button>
+            <button onclick="event.stopPropagation();PageUSStocks.delTrade('${t.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">🗑️</button>
+          </div>
+        </div>`;
       }).join('');
 
       return `
-        <tr>
-          <td>
-            <strong style="color:#1D4ED8;">${h.symbol}</strong>
-            ${exBadge}
-          </td>
-          <td>${h.name}</td>
-          <td class="text-right">${Utils.formatShares(h.quantity)}</td>
-          <td class="text-right">${Utils.formatUSD(h.avgCost)}</td>
-          <td class="text-right">
-            ${hasPrice ? Utils.formatUSD(currentPrice) : '<span style="color:#D1D5DB;">--</span>'}
-            ${changeHtml}
-          </td>
-          <td class="text-right">
-            ${marketValue !== null ? Utils.formatUSD(marketValue) : '<span style="color:#D1D5DB;">--</span>'}
-          </td>
-          <td class="text-right ${unrealizedPnL !== null ? Utils.pnlClass(unrealizedPnL) : ''}">
-            ${unrealizedPnL !== null
-              ? `${Utils.formatUSD(unrealizedPnL, true)}<div style="font-size:11px;">${Utils.pnlArrow(unrealizedPct)} ${Math.abs(unrealizedPct).toFixed(2)}%</div>`
-              : '<span style="color:#D1D5DB;">--</span>'
-            }
-          </td>
-          <td class="text-center">
-            <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openAddTrade('${h.symbol}','${h.name}')">交易</button>
-            <button class="btn btn-secondary btn-sm" style="margin-left:4px;color:#8B5CF6;" onclick="PageUSStocks.openAddDividendFor('${h.symbol}')">股利</button>
-            <button id="us-holding-arrow-${h.symbol}" class="btn btn-secondary btn-sm" style="margin-left:4px;" onclick="PageUSStocks.toggleHoldingTrades('${h.symbol}')">▼</button>
-          </td>
-        </tr>
-        <tr id="us-holding-trades-${h.symbol}" style="display:none;">
-          <td colspan="8" style="padding:0;background:#F8FAFC;">
-            <div style="padding:10px 16px 14px;border-top:1px solid #E2E8F0;">
-              ${symbolTrades.length === 0
-                ? '<div style="text-align:center;color:#9CA3AF;font-size:13px;padding:6px 0;">尚無交易紀錄</div>'
-                : `<table class="data-table" style="font-size:12px;">
-                    <thead><tr>
-                      <th>日期</th><th class="text-center">買賣</th>
-                      <th class="text-right">股數</th><th class="text-right">成交價</th>
-                      <th class="text-right">手續費</th><th class="text-right">金額</th>
-                    </tr></thead>
-                    <tbody>${tradeDetailRows}</tbody>
-                  </table>`
-              }
+        <div style="background:white;border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div style="font-size:17px;font-weight:700;color:#1d4ed8;">${h.symbol}</div>
+              <div style="font-size:12px;color:#6b7280;margin-top:1px;">${h.name}</div>
+              ${exDate ? `<div style="font-size:10px;background:#EDE9FE;color:#5b21b6;padding:1px 6px;border-radius:4px;margin-top:3px;display:inline-block;">💵 Ex ${exDate}</div>` : ''}
             </div>
-          </td>
-        </tr>
-      `;
+            <div style="text-align:right;">
+              <div style="font-size:17px;font-weight:700;color:#1e293b;">${hasPrice ? Utils.formatUSD(currentPrice) : '<span style="color:#d1d5db;">--</span>'}</div>
+              ${changePct !== null ? `<div style="font-size:11px;color:${changePct >= 0 ? '#10b981' : '#ef4444'};">${changePct >= 0 ? '▲' : '▼'} ${Math.abs(changePct).toFixed(2)}%</div>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;margin-top:10px;padding-top:8px;border-top:1px solid #f1f5f9;">
+            <div style="flex:1;text-align:center;">
+              <div style="font-size:9px;color:#94a3b8;font-weight:500;margin-bottom:2px;">市值</div>
+              <div style="font-size:13px;font-weight:600;color:#1e293b;">${marketValue !== null ? Utils.formatUSD(marketValue) : '--'}</div>
+            </div>
+            <div style="flex:1;text-align:center;border-left:1px solid #f1f5f9;">
+              <div style="font-size:9px;color:#94a3b8;font-weight:500;margin-bottom:2px;">未實現損益</div>
+              <div style="font-size:13px;font-weight:600;color:${unrealizedPnL !== null ? (unrealizedPnL >= 0 ? '#10b981' : '#ef4444') : '#94a3b8'};">
+                ${unrealizedPnL !== null ? Utils.formatUSD(unrealizedPnL, true) : '--'}
+              </div>
+              ${unrealizedPct !== null ? `<div style="font-size:10px;color:${unrealizedPct >= 0 ? '#10b981' : '#ef4444'};">${unrealizedPct >= 0 ? '▲' : '▼'}${Math.abs(unrealizedPct).toFixed(2)}%</div>` : ''}
+            </div>
+            <div style="flex:1;text-align:center;border-left:1px solid #f1f5f9;">
+              <div style="font-size:9px;color:#94a3b8;font-weight:500;margin-bottom:2px;">持股</div>
+              <div style="font-size:13px;font-weight:600;color:#1e293b;">${Utils.formatShares(h.quantity)}股</div>
+              <div style="font-size:10px;color:#94a3b8;">均 ${Utils.formatUSD(h.avgCost)}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid #f1f5f9;">
+            <button class="btn btn-primary btn-sm" onclick="PageUSStocks.openAddTrade('${h.symbol}','${h.name}')">＋ 交易</button>
+            <button class="btn btn-secondary btn-sm" style="color:#8b5cf6;" onclick="PageUSStocks.openAddDividendFor('${h.symbol}')">股利</button>
+            <button id="us-holding-arrow-${h.symbol}" class="btn btn-secondary btn-sm" style="margin-left:auto;"
+              onclick="PageUSStocks.toggleHoldingTrades('${h.symbol}')">▼ 明細</button>
+          </div>
+          <div id="us-holding-trades-${h.symbol}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;">
+            <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;">交易紀錄</div>
+            ${symbolTrades.length === 0
+              ? '<div style="text-align:center;color:#9ca3af;font-size:12px;padding:8px 0;">尚無交易紀錄</div>'
+              : tradeRows}
+          </div>
+        </div>`;
     }).join('');
 
-    // Pie chart: use market value when available, else cost
     const holdingsForPie = holdings.map(h => {
       const p  = priceCache[h.symbol];
       const mv = (p && p.price && !p.error) ? p.price * h.quantity : h.totalCost;
@@ -273,38 +253,17 @@ const PageUSStocks = (() => {
     const pieLabel = fetchTimes.length > 0 ? '持股分布（市值）' : '持股分布（成本）';
 
     container.innerHTML = `
-      <div style="display:grid;grid-template-columns:3fr 2fr;gap:20px;">
-        <div class="card" style="overflow-x:auto;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <div class="card-title" style="margin:0;">持股明細</div>
-            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-              ${lastUpdateStr ? `<span style="font-size:11px;color:#9CA3AF;">更新：${lastUpdateStr}</span>` : ''}
-              <button class="btn btn-secondary btn-sm" id="us-refresh-btn"
-                onclick="PageUSStocks.refreshPrices()" ${_fetchingPrices ? 'disabled' : ''}>
-                ${_fetchingPrices ? '更新中…' : '🔄 更新報價'}
-              </button>
-            </div>
-          </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>代號</th>
-                <th>名稱</th>
-                <th class="text-right">持股數</th>
-                <th class="text-right">平均成本</th>
-                <th class="text-right">現價</th>
-                <th class="text-right">市值</th>
-                <th class="text-right">未實現損益</th>
-                <th class="text-center">操作</th>
-              </tr>
-            </thead>
-            <tbody>${tableRows}</tbody>
-          </table>
-        </div>
-        <div class="card">
-          <div class="card-title" style="margin-bottom:12px;">${pieLabel}</div>
-          <canvas id="us-holdings-pie"></canvas>
-        </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        ${lastUpdateStr ? `<span style="font-size:11px;color:#9ca3af;">更新：${lastUpdateStr}</span>` : '<span></span>'}
+        <button class="btn btn-secondary btn-sm" id="us-refresh-btn"
+          onclick="PageUSStocks.refreshPrices()" ${_fetchingPrices ? 'disabled' : ''}>
+          ${_fetchingPrices ? '更新中…' : '🔄 更新報價'}
+        </button>
+      </div>
+      ${holdingCards}
+      <div style="background:white;border-radius:14px;padding:14px;margin-top:4px;">
+        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:10px;">${pieLabel}</div>
+        <canvas id="us-holdings-pie" style="max-height:220px;"></canvas>
       </div>
     `;
 
@@ -313,7 +272,7 @@ const PageUSStocks = (() => {
 
   // ── Trades ──────────────────────────────────────────────────────
   function _renderTrades() {
-    const trades = Store.getStockTrades(MARKET).slice().reverse();
+    const trades    = Store.getStockTrades(MARKET).slice().reverse();
     const container = document.getElementById('us-tab-content');
 
     if (trades.length === 0) {
@@ -322,54 +281,44 @@ const PageUSStocks = (() => {
     }
 
     container.innerHTML = `
-      <div class="card" style="overflow-x:auto;">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>日期</th>
-              <th>代號</th>
-              <th>名稱</th>
-              <th class="text-center">買賣</th>
-              <th style="font-size:11px;color:#9CA3AF;">來源</th>
-              <th class="text-right">股數</th>
-              <th class="text-right">價格</th>
-              <th class="text-right">手續費</th>
-              <th class="text-right">金額</th>
-              <th class="text-center">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${trades.map(t => {
-              const gross = t.quantity * t.price;
-              const net = t.action === 'buy' ? gross + (t.fee||0) : gross - (t.fee||0);
-              return `
-                <tr>
-                  <td>${Utils.formatDate(t.date)}</td>
-                  <td><strong style="color:#1D4ED8;">${t.symbol}</strong></td>
-                  <td>${t.name}</td>
-                  <td class="text-center">
-                    <span class="badge ${t.action==='buy'?'badge-buy':'badge-sell'}">
-                      ${t.action==='buy'?'Buy':'Sell'}
-                    </span>
-                  </td>
-                  <td style="font-size:11px;color:#9CA3AF;">${t.source === 'dca' ? '📅DCA' : '手動'}</td>
-                  <td class="text-right">${Utils.formatShares(t.quantity)}</td>
-                  <td class="text-right">${Utils.formatUSD(t.price)}</td>
-                  <td class="text-right" style="color:#9CA3AF;">${Utils.formatUSD(t.fee||0)}</td>
-                  <td class="text-right" style="font-weight:600;color:${t.action==='buy'?'#EF4444':'#10B981'};">
-                    ${t.action==='buy'?'-':'+'}${Utils.formatUSD(net)}
-                  </td>
-                  <td class="text-center">
-                    <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openEditTrade('${t.id}')">編輯</button>
-                    <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="PageUSStocks.delTrade('${t.id}')">刪除</button>
-                  </td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
+      <div style="background:white;border-radius:14px;overflow:hidden;">
+        ${trades.map(t => {
+          const gross = t.quantity * t.price;
+          const net   = t.action === 'buy' ? gross + (t.fee || 0) : gross - (t.fee || 0);
+          return `
+            <div style="border-bottom:1px solid #f1f5f9;">
+              <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;">
+                <span class="badge ${t.action === 'buy' ? 'badge-buy' : 'badge-sell'}" style="flex-shrink:0;">${t.action === 'buy' ? 'Buy' : 'Sell'}</span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13px;font-weight:700;">
+                    <span style="color:#1d4ed8;">${t.symbol}</span>
+                    <span style="font-weight:400;color:#374151;font-size:12px;"> ${t.name}</span>
+                  </div>
+                  <div style="font-size:11px;color:#94a3b8;">${Utils.formatDate(t.date)}${t.source === 'dca' ? ' · 📅DCA' : ''}</div>
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                  <div style="font-size:14px;font-weight:700;color:${t.action === 'buy' ? '#ef4444' : '#10b981'};">
+                    ${t.action === 'buy' ? '-' : '+'}${Utils.formatUSD(net)}
+                  </div>
+                  <div style="font-size:10px;color:#94a3b8;">${Utils.formatShares(t.quantity)}股</div>
+                </div>
+                <button id="us-trade-arrow-${t.id}" onclick="PageUSStocks.toggleTradeDetail('${t.id}')"
+                  style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 7px;cursor:pointer;color:#94a3b8;font-size:12px;flex-shrink:0;">▼</button>
+              </div>
+              <div id="us-trade-detail-${t.id}" style="display:none;padding:0 14px 12px;background:#f8fafc;">
+                <div style="display:flex;flex-wrap:wrap;gap:8px 20px;font-size:12px;color:#374151;padding-bottom:10px;">
+                  <div><span style="color:#94a3b8;">單價</span> ${Utils.formatUSD(t.price)}</div>
+                  <div><span style="color:#94a3b8;">股數</span> ${Utils.formatShares(t.quantity)}</div>
+                  ${t.fee ? `<div><span style="color:#94a3b8;">手續費</span> ${Utils.formatUSD(t.fee)}</div>` : ''}
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openEditTrade('${t.id}')">✏️ 編輯</button>
+                  <button class="btn btn-danger btn-sm" onclick="PageUSStocks.delTrade('${t.id}')">🗑️ 刪除</button>
+                </div>
+              </div>
+            </div>`;
+        }).join('')}
+      </div>`;
   }
 
   // ── Dividends ───────────────────────────────────────────────────
@@ -389,7 +338,6 @@ const PageUSStocks = (() => {
       return;
     }
 
-    // Group by symbol → sorted by total desc
     const bySymbol = {};
     divs.forEach(d => {
       if (!bySymbol[d.symbol]) bySymbol[d.symbol] = { symbol: d.symbol, name: d.name, cashTotal: 0, count: 0 };
@@ -400,61 +348,62 @@ const PageUSStocks = (() => {
     const grandTotal = grouped.reduce((s, g) => s + g.cashTotal, 0);
 
     container.innerHTML = `
-      <!-- Per-stock summary cards -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px;">
-        ${grouped.map(g => `
-          <div class="card" style="border-left:4px solid #8B5CF6;padding:14px 16px;">
-            <div style="font-weight:700;color:#1D4ED8;font-size:15px;">${g.symbol}</div>
-            <div style="font-size:12px;color:#6B7280;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${g.name}</div>
-            <div style="font-size:20px;font-weight:700;color:#8B5CF6;">${Utils.formatUSD(g.cashTotal)}</div>
-            <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">${g.count} 次紀錄</div>
-          </div>`).join('')}
-        <div class="card" style="border-left:4px solid #10B981;padding:14px 16px;background:#F0FDF4;">
-          <div style="font-size:12px;color:#6B7280;margin-bottom:8px;">全部合計</div>
-          <div style="font-size:20px;font-weight:700;color:#059669;">${Utils.formatUSD(grandTotal)}</div>
-          <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">${divs.length} 筆紀錄 · ${grouped.length} 檔股票</div>
+      <div style="background:#f0fdf4;border-radius:14px;padding:14px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-size:11px;color:#6b7280;font-weight:500;">累計股利收入</div>
+          <div style="font-size:22px;font-weight:700;color:#059669;">${Utils.formatUSD(grandTotal)}</div>
         </div>
+        <div style="text-align:right;font-size:12px;color:#9ca3af;">${divs.length} 筆 · ${grouped.length} 檔</div>
       </div>
 
-      <!-- Full history table -->
-      <div class="card" style="overflow-x:auto;">
-        <div class="card-title" style="margin-bottom:12px;">完整股利紀錄</div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>日期</th>
-              <th>代號</th>
-              <th>名稱</th>
-              <th class="text-right">股利總額</th>
-              <th>備註</th>
-              <th class="text-center">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${divs.map(d => `
-              <tr>
-                <td style="white-space:nowrap;">${Utils.formatDate(d.date)}</td>
-                <td><strong style="color:#1D4ED8;">${d.symbol}</strong></td>
-                <td>${d.name}</td>
-                <td class="text-right" style="color:#8B5CF6;font-weight:600;">${d.cashTotal > 0 ? Utils.formatUSD(d.cashTotal) : '-'}</td>
-                <td style="font-size:12px;color:#6B7280;">${d.note || '-'}</td>
-                <td class="text-center">
-                  <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openEditDividend('${d.id}')">編輯</button>
-                  <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="PageUSStocks.delDividend('${d.id}')">刪除</button>
-                </td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
+      ${grouped.map(g => {
+        const symbolDivs = divs.filter(d => d.symbol === g.symbol);
+        const detailRows = symbolDivs.map(d => `
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f1f5f9;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;font-weight:600;color:#374151;">${Utils.formatDate(d.date)}</div>
+              ${d.note ? '<div style="font-size:11px;color:#94a3b8;">' + d.note + '</div>' : ''}
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              ${d.cashTotal > 0 ? '<div style="font-size:13px;font-weight:600;color:#8b5cf6;">' + Utils.formatUSD(d.cashTotal) + '</div>' : ''}
+            </div>
+            <div style="display:flex;gap:2px;flex-shrink:0;">
+              <button onclick="event.stopPropagation();PageUSStocks.openEditDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">✏️</button>
+              <button onclick="event.stopPropagation();PageUSStocks.delDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">🗑️</button>
+            </div>
+          </div>`).join('');
+
+        return `
+          <div style="background:white;border-radius:14px;margin-bottom:10px;overflow:hidden;">
+            <div onclick="PageUSStocks.toggleDivGroup('${g.symbol}')"
+              style="display:flex;align-items:center;padding:14px 16px;cursor:pointer;border-left:4px solid #8b5cf6;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:15px;font-weight:700;color:#1d4ed8;">${g.symbol}</div>
+                <div style="font-size:11px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${g.name}</div>
+              </div>
+              <div style="text-align:right;margin-right:12px;">
+                <div style="font-size:16px;font-weight:700;color:#8b5cf6;">${Utils.formatUSD(g.cashTotal)}</div>
+                <div style="font-size:11px;color:#9ca3af;">${g.count} 次紀錄</div>
+              </div>
+              <span id="us-div-arrow-${g.symbol}" style="color:#94a3b8;font-size:14px;flex-shrink:0;">▼</span>
+            </div>
+            <div id="us-div-detail-${g.symbol}" style="display:none;padding:0 16px 12px;">
+              <div style="display:flex;justify-content:flex-end;padding-top:8px;padding-bottom:4px;">
+                <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();PageUSStocks.openAddDividendFor('${g.symbol}')">＋ 新增</button>
+              </div>
+              ${detailRows}
+            </div>
+          </div>`;
+      }).join('')}
     `;
   }
 
   // ── DCA Tab ─────────────────────────────────────────────────────
   function _renderDca() {
-    const plans = Store.getDcaPlans(MARKET);
-    const pending = Store.getPendingDcaPlans(MARKET);
+    const plans      = Store.getDcaPlans(MARKET);
+    const pending    = Store.getPendingDcaPlans(MARKET);
     const pendingIds = new Set(pending.map(p => p.id));
-    const container = document.getElementById('us-tab-content');
+    const container  = document.getElementById('us-tab-content');
 
     if (plans.length === 0) {
       container.innerHTML = `
@@ -471,8 +420,8 @@ const PageUSStocks = (() => {
       return;
     }
 
-    const today = new Date();
-    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+    const today           = new Date();
+    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,'0')}`;
 
     container.innerHTML = `
       <div class="card">
@@ -489,7 +438,7 @@ const PageUSStocks = (() => {
           </thead>
           <tbody>
             ${plans.map(p => {
-              const isDue = pendingIds.has(p.id);
+              const isDue  = pendingIds.has(p.id);
               const isDone = p.lastExecutedMonth === currentMonthKey;
               return `
                 <tr>
@@ -519,8 +468,7 @@ const PageUSStocks = (() => {
                     <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openEditDca('${p.id}')">編輯</button>
                     <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="PageUSStocks.delDca('${p.id}')">刪除</button>
                   </td>
-                </tr>
-              `;
+                </tr>`;
             }).join('')}
           </tbody>
         </table>
@@ -543,34 +491,19 @@ const PageUSStocks = (() => {
           </div>
         </div>
         ${realized.length > 0 ? `
-        <div class="card" style="overflow-x:auto;">
-          <div class="card-title" style="margin-bottom:14px;">已實現交易紀錄</div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>賣出日期</th><th>代號</th><th>名稱</th>
-                <th class="text-right">股數</th>
-                <th class="text-right">平均成本</th>
-                <th class="text-right">賣出價格</th>
-                <th class="text-right">損益</th>
-                <th class="text-right">報酬率</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${realized.slice().reverse().map(r => `
-                <tr>
-                  <td>${Utils.formatDate(r.date)}</td>
-                  <td><strong style="color:#1D4ED8;">${r.symbol}</strong></td>
-                  <td>${r.name}</td>
-                  <td class="text-right">${Utils.formatShares(r.quantity)}</td>
-                  <td class="text-right">${Utils.formatUSD(r.avgCost)}</td>
-                  <td class="text-right">${Utils.formatUSD(r.sellPrice)}</td>
-                  <td class="text-right ${Utils.pnlClass(r.pnl)}">${Utils.formatUSD(r.pnl, true)}</td>
-                  <td class="text-right ${Utils.pnlClass(r.pnlPct)}">${Utils.pnlArrow(r.pnlPct)} ${Math.abs(r.pnlPct).toFixed(2)}%</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+        <div style="background:white;border-radius:14px;overflow:hidden;">
+          <div style="padding:14px 16px;font-weight:600;color:#374151;border-bottom:1px solid #f1f5f9;">已實現交易紀錄</div>
+          ${realized.slice().reverse().map(r => `
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid #f8fafc;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:700;"><span style="color:#1d4ed8;">${r.symbol}</span> <span style="font-weight:400;color:#374151;font-size:12px;">${r.name}</span></div>
+                <div style="font-size:11px;color:#94a3b8;">${Utils.formatDate(r.date)} · ${Utils.formatShares(r.quantity)}股 @ ${Utils.formatUSD(r.sellPrice)}</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0;">
+                <div style="font-size:14px;font-weight:700;${Utils.pnlClass(r.pnl) === 'text-green' ? 'color:#10b981' : 'color:#ef4444'};">${Utils.formatUSD(r.pnl, true)}</div>
+                <div style="font-size:11px;color:#94a3b8;">${Utils.pnlArrow(r.pnlPct)} ${Math.abs(r.pnlPct).toFixed(2)}%</div>
+              </div>
+            </div>`).join('')}
         </div>
         ` : ''}
       </div>
@@ -622,7 +555,6 @@ const PageUSStocks = (() => {
     Modal.openImport(MARKET, _refresh);
   }
 
-  // DCA actions
   function openAddDca() {
     Modal.openDcaPlan(MARKET, null, _refresh);
   }
@@ -651,12 +583,30 @@ const PageUSStocks = (() => {
   }
 
   function toggleHoldingTrades(symbol) {
-    const row = document.getElementById('us-holding-trades-' + symbol);
-    const btn = document.getElementById('us-holding-arrow-' + symbol);
-    if (!row) return;
-    const isOpen = row.style.display !== 'none';
-    row.style.display = isOpen ? 'none' : '';
+    const detail = document.getElementById('us-holding-trades-' + symbol);
+    const btn    = document.getElementById('us-holding-arrow-' + symbol);
+    if (!detail) return;
+    const isOpen = detail.style.display !== 'none';
+    detail.style.display = isOpen ? 'none' : '';
+    if (btn) btn.textContent = isOpen ? '▼ 明細' : '▲ 收起';
+  }
+
+  function toggleTradeDetail(id) {
+    const detail = document.getElementById('us-trade-detail-' + id);
+    const btn    = document.getElementById('us-trade-arrow-' + id);
+    if (!detail) return;
+    const isOpen = detail.style.display !== 'none';
+    detail.style.display = isOpen ? 'none' : '';
     if (btn) btn.textContent = isOpen ? '▼' : '▲';
+  }
+
+  function toggleDivGroup(symbol) {
+    const detail = document.getElementById('us-div-detail-' + symbol);
+    const arrow  = document.getElementById('us-div-arrow-' + symbol);
+    if (!detail) return;
+    const open = detail.style.display === 'none';
+    detail.style.display = open ? '' : 'none';
+    if (arrow) arrow.textContent = open ? '▲' : '▼';
   }
 
   function _refresh() {
@@ -701,7 +651,7 @@ const PageUSStocks = (() => {
     openAddDividend, openAddDividendFor, openEditDividend, delDividend,
     openImport,
     openAddDca, openEditDca, delDca, toggleDca, executeDca,
-    toggleHoldingTrades,
+    toggleHoldingTrades, toggleTradeDetail, toggleDivGroup,
     refreshPrices,
   };
 })();
