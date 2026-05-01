@@ -63,22 +63,22 @@ const PageDashboard = (() => {
       <!-- Stats Row -->
       <div class="grid-4" style="margin-bottom:20px;">
         <div class="card">
-          <div class="card-title">本月收入</div>
+          <div class="card-title"><i class="fa-solid fa-arrow-trend-up" style="color:#10B981;margin-right:5px;"></i>本月收入</div>
           <div class="stat-value" style="color:#10B981;">${Utils.formatTWD(summary.income)}</div>
           <div class="stat-sub">共 ${Store.getTransactions().filter(t=>t.date.startsWith(prefix)&&t.type==='income').length} 筆</div>
         </div>
         <div class="card">
-          <div class="card-title">本月支出</div>
+          <div class="card-title"><i class="fa-solid fa-arrow-trend-down" style="color:#EF4444;margin-right:5px;"></i>本月支出</div>
           <div class="stat-value" style="color:#EF4444;">${Utils.formatTWD(summary.expense)}</div>
           <div class="stat-sub">共 ${expenseTx.length} 筆</div>
         </div>
         <div class="card">
-          <div class="card-title">本月結餘</div>
+          <div class="card-title"><i class="fa-solid fa-scale-balanced" style="color:#6366F1;margin-right:5px;"></i>本月結餘</div>
           <div class="stat-value ${Utils.pnlClass(summary.net)}">${Utils.formatTWD(summary.net)}</div>
           <div class="stat-sub">${Utils.pnlArrow(summary.net)} ${summary.net >= 0 ? '盈餘' : '虧損'}</div>
         </div>
         <div class="card">
-          <div class="card-title">銀行總餘額</div>
+          <div class="card-title"><i class="fa-solid fa-building-columns" style="color:#10B981;margin-right:5px;"></i>銀行總餘額</div>
           <div class="stat-value" style="color:#6366F1;">${Utils.formatTWD(totalBankBalance)}</div>
           <div class="stat-sub">${banks.length} 個帳戶</div>
         </div>

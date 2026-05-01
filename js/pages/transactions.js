@@ -107,19 +107,17 @@ const PageTransactions = (() => {
 
   function _buildTabStrip() {
     const tabs = [
-      { id:'day',    label:'📅 當日' },
-      { id:'charts', label:'📊 圖表' },
-      { id:'all',    label:'📋 全部' },
-      { id:'events', label:'🎯 活動' },
-      { id:'banks',  label:'🏦 銀行' },
-      { id:'subs',   label:'🔄 訂閱' },
+      { id:'day',    label:'當日' },
+      { id:'charts', label:'圖表' },
+      { id:'all',    label:'全部' },
+      { id:'events', label:'活動' },
+      { id:'banks',  label:'銀行' },
+      { id:'subs',   label:'訂閱' },
     ];
     return `
-      <div class="tx-tab-strip">
-        ${tabs.map(t =>
-          `<button class="tx-tab-btn${_tab === t.id ? ' active' : ''}"
-            onclick="PageTransactions.setTab('${t.id}')">${t.label}</button>`
-        ).join('')}
+      <div role="tablist" class="tabs tabs-bordered tx-tab-strip">
+        ${tabs.map(t => `<button role="tab" class="tab grow tx-tab-btn${_tab === t.id ? ' tab-active' : ''}"
+            onclick="PageTransactions.setTab('${t.id}')">${t.label}</button>`).join('')}
       </div>`;
   }
 
@@ -927,11 +925,6 @@ const PageTransactions = (() => {
     _refresh();
   }
 
-  async function billSubNow(id) {
-    await PageSubscriptions.billNow(id);
-    _refresh();
-  }
-
   return {
     render, selectDate, prevMonth, nextMonth, setTab,
     openAdd, openAddForDate, openEdit, del,
@@ -942,6 +935,6 @@ const PageTransactions = (() => {
     openAddCard, openEditCard, deleteCard,
     adjustBalance, _saveAdjBalance,
     openAddSub, openEditSub, deleteSub,
-    toggleSubActive, billSubNow,
+    toggleSubActive,
   };
 })();

@@ -1,7 +1,7 @@
 /**
  * Service Worker — offline caching for PWA
  */
-const CACHE_NAME = 'cashio-v2';
+const CACHE_NAME = 'cashio-v4';
 
 // Files to cache for offline use
 const STATIC_ASSETS = [
@@ -30,6 +30,8 @@ const STATIC_ASSETS = [
 const CDN_ASSETS = [
   'https://cdn.tailwindcss.com',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
+  'https://cdnjs.cloudflare.com',
+  'https://cdn.jsdelivr.net',
 ];
 
 // ── Install: pre-cache static assets ──────────────────────────────

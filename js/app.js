@@ -1,4 +1,4 @@
-/**
+﻿/**
  * App — router, bootstrap, global init
  */
 (function () {
@@ -109,16 +109,6 @@
     const debitCount = Store.processAutoDebits();
     if (debitCount > 0) {
       Utils.showToast(`已自動處理 ${debitCount} 張信用卡扣款，銀行餘額已更新`);
-    }
-
-    // 2. Subscription billing (async — needs exchange rate fetch)
-    try {
-      const billedCount = await PageSubscriptions.processAll();
-      if (billedCount > 0) {
-        Utils.showToast(`已自動計入 ${billedCount} 筆訂閱費用`);
-      }
-    } catch (e) {
-      // Non-critical, silent fail
     }
   }
 

@@ -1,5 +1,5 @@
 ﻿<!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-TW" data-theme="emerald">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -21,6 +21,9 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="css/app.css">
 
   <script>
@@ -66,19 +69,19 @@
   <div id="mobile-nav">
     <div class="mobile-nav-row" id="mobile-nav-row">
       <a href="#dashboard" class="mobile-nav-item" data-page="dashboard">
-        <span class="nav-icon">📊</span><span>總覽</span>
+        <span class="nav-icon-wrap"><i class="fa-solid fa-house nav-icon"></i></span><span>總覽</span>
       </a>
       <a href="#transactions" class="mobile-nav-item" data-page="transactions">
-        <span class="nav-icon">💳</span><span>收支</span>
+        <span class="nav-icon-wrap"><i class="fa-solid fa-wallet nav-icon"></i></span><span>收支</span>
       </a>
       <a href="#tw-stocks" class="mobile-nav-item" data-page="tw-stocks">
-        <span class="nav-icon">🇹🇼</span><span>台股</span>
+        <span class="nav-icon-wrap"><i class="fa-solid fa-chart-line nav-icon"></i></span><span>台股</span>
       </a>
       <a href="#us-stocks" class="mobile-nav-item" data-page="us-stocks">
-        <span class="nav-icon">🇺🇸</span><span>美股</span>
+        <span class="nav-icon-wrap"><i class="fa-solid fa-chart-bar nav-icon"></i></span><span>美股</span>
       </a>
       <a href="#settings" class="mobile-nav-item" data-page="settings">
-        <span class="nav-icon">⚙️</span><span>設定</span>
+        <span class="nav-icon-wrap"><i class="fa-solid fa-gear nav-icon"></i></span><span>設定</span>
       </a>
     </div>
   </div>
@@ -105,23 +108,23 @@
 
     <nav class="flex-1 py-3 overflow-y-auto">
       <a href="#dashboard" class="nav-link" data-page="dashboard">
-        <span class="nav-icon">📊</span> 總覽
+        <span class="nav-icon-wrap"><i class="fa-solid fa-house nav-icon"></i></span> 總覽
       </a>
       <a href="#transactions" class="nav-link" data-page="transactions">
-        <span class="nav-icon">💳</span> 收支記錄
+        <span class="nav-icon-wrap"><i class="fa-solid fa-wallet nav-icon"></i></span> 收支記帳
       </a>
 
       <div class="nav-section-label">股票投資</div>
       <a href="#tw-stocks" class="nav-link" data-page="tw-stocks">
-        <span class="nav-icon">🇹🇼</span> 台股
+        <span class="nav-icon-wrap"><i class="fa-solid fa-chart-line nav-icon"></i></span> 台股
       </a>
       <a href="#us-stocks" class="nav-link" data-page="us-stocks">
-        <span class="nav-icon">🇺🇸</span> 美股
+        <span class="nav-icon-wrap"><i class="fa-solid fa-chart-bar nav-icon"></i></span> 美股
       </a>
 
       <div class="nav-section-label">系統</div>
       <a href="#settings" class="nav-link" data-page="settings">
-        <span class="nav-icon">⚙️</span> 設定
+        <span class="nav-icon-wrap"><i class="fa-solid fa-gear nav-icon"></i></span> 設定
       </a>
     </nav>
 
