@@ -283,64 +283,134 @@ const PageSettings = (() => {
   }
 
   function _parseTWStockStatement(text, broker) {
+    if (/海外股票交易明細|客戶.*買賣報告書/.test(text)) return _parseCathayUSReport(text);
+    if (/證券日對帳單/.test(text))                       return _parseCathayTWDaily(text);
+
+    // Generic fallback
     const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
-    const raw   = [];
-
-    for (const line of lines) {
-      const t = _tryParseTradeRow(line);
-      if (t) raw.push(t);
-    }
-
-    // Deduplicate by date+symbol+qty+price+action
+    const raw = [];
+    for (const line of lines) { const t = _tryParseTradeRow(line); if (t) raw.push(t); }
     const seen = new Set();
     return raw.filter(t => {
       const k = `${t.date}|${t.symbol}|${t.quantity}|${t.price}|${t.action}`;
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
+      if (seen.has(k)) return false; seen.add(k); return true;
     });
   }
 
+  // 國泰證券 證券日對帳單 — domestic TW stocks
+  function _parseCathayTWDaily(text) {
+    const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+
+    // First YYYY/MM/DD in document = trade date
+    let tradeDate = null;
+    for (const line of lines) {
+      const m = line.match(/(\d{4}\/\d{2}\/\d{2})/);
+      if (m) { tradeDate = m[1].replace(/\//g, '-'); break; }
+    }
+    if (!tradeDate) return [];
+
+    // Build name→code from holdings section (庫存明細): "2886 兆豐金 ..."
+    const nameToCode = {};
+    for (const line of lines) {
+      const m = line.match(/(\d{4,5})\s+([一-鿿]{2,10})/);
+      if (m) nameToCode[m[2]] = m[1];
+    }
+
+    const trades = [];
+    const seen = new Set();
+    for (const line of lines) {
+      // ChineseName  集買/集賣/現買/現賣/融買/融賣  qty  price  totalAmt  fee  tax
+      const m = line.match(/([一-鿿]{2,10})\s+(集買|集賣|現買|現賣|融買|融賣|零買|零賣)\s+([\d,]+)\s+([\d.]+)\s+([\d,]+)\s+([\d,]+)\s*([\d,]*)/);
+      if (!m) continue;
+      const [, name, typeStr, qtyStr, priceStr, , feeStr, taxStr] = m;
+      const qty   = parseInt(qtyStr.replace(/,/g, ''), 10);
+      const price = parseFloat(priceStr);
+      if (!qty || !price || price <= 0) continue;
+      const action = /買/.test(typeStr) ? 'buy' : 'sell';
+      const fee    = parseInt((feeStr || '0').replace(/,/g, ''), 10) || 0;
+      const tax    = parseInt((taxStr || '0').replace(/,/g, ''), 10) || 0;
+      const symbol = nameToCode[name] || name;
+      const k = `${tradeDate}|${symbol}|${qty}|${price}|${action}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      trades.push({ date: tradeDate, symbol, name, action, quantity: qty, price, fee, tax, market: 'TW' });
+    }
+    return trades;
+  }
+
+  // 國泰綜合證券 客戶日買賣報告書 — US / overseas stocks
+  function _parseCathayUSReport(text) {
+    const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+
+    // Report date from header: "2026年04月27日"
+    let reportDate = null;
+    for (const line of lines) {
+      const m = line.match(/(\d{4})年(\d{2})月(\d{2})日/);
+      if (m) { reportDate = `${m[1]}-${m[2]}-${m[3]}`; break; }
+    }
+
+    // Join lines by 8-digit trade reference into one record per trade
+    const records = [];
+    let cur = '';
+    for (const line of lines) {
+      if (/^\d{8}\s/.test(line)) { if (cur) records.push(cur); cur = line; }
+      else if (cur) cur += ' ' + line;
+    }
+    if (cur) records.push(cur);
+
+    const trades = [];
+    const seen = new Set();
+    for (const record of records) {
+      // ref  SYMBOL/Name  市場  買進/賣出  currency  shares  price  amt  fee  tax  ...  date
+      const m = record.match(/^\d{8}\s+([A-Z0-9.]+)\/(.+?)\s+(美國|日本|香港|英國|德國)\s+(買進?|賣出?)\s+\S+\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+).*?(\d{4}\/\d{2}\/\d{2})/);
+      if (!m) continue;
+      const [, symbol, nameRaw, marketStr, actionStr, sharesStr, priceStr, , feeStr, taxStr, settleDateStr] = m;
+      const shares = parseFloat(sharesStr);
+      const price  = parseFloat(priceStr);
+      if (!shares || !price) continue;
+
+      // Use header report date; fallback: derive from settlement (US = T+1)
+      let tradeDate = reportDate;
+      if (!tradeDate) {
+        const d = new Date(settleDateStr.replace(/\//g, '-') + 'T12:00:00Z');
+        d.setUTCDate(d.getUTCDate() - 1);
+        tradeDate = d.toISOString().slice(0, 10);
+      }
+
+      const action = /買/.test(actionStr) ? 'buy' : 'sell';
+      const fee    = parseFloat(feeStr) || 0;
+      const tax    = parseFloat(taxStr) || 0;
+      const market = marketStr === '美國' ? 'US' : 'TW';
+      const k = `${tradeDate}|${symbol}|${shares}|${price}|${action}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      trades.push({ date: tradeDate, symbol, name: nameRaw.trim(), action, quantity: shares, price, fee, tax, market });
+    }
+    return trades;
+  }
+
   function _tryParseTradeRow(line) {
-    // Match: YYYY/MM/DD  symbol  [Chinese name]  買進/賣出  qty  price  [remaining numbers]
     const m = line.match(
       /(\d{4}[\/\-]\d{2}[\/\-]\d{2})\s+(\d{4,6})\s*([一-鿿\w]*(?:\s[一-鿿\w]+)*?)\s*(買進?|賣出?)\s+([\d,]+)\s+([\d,]+(?:\.\d+)?)((?:\s+[\d,]+)*)/
     );
     if (!m) return null;
-
     const [, dateStr, symbol, nameRaw, actionStr, qtyStr, priceStr, restStr] = m;
     const qty   = parseInt(qtyStr.replace(/,/g, ''), 10);
     const price = parseFloat(priceStr.replace(/,/g, ''));
     if (!qty || !price || price <= 0 || price > 200000) return null;
-
-    const action    = /買/.test(actionStr) ? 'buy' : 'sell';
-    const totalAmt  = qty * price;
-
-    // Extract fee and tax from the remaining numbers (filter out settlement amount)
-    const others = (restStr || '').match(/[\d,]+/g)
+    const action   = /買/.test(actionStr) ? 'buy' : 'sell';
+    const totalAmt = qty * price;
+    const others   = (restStr || '').match(/[\d,]+/g)
       ?.map(n => parseInt(n.replace(/,/g, ''), 10))
       .filter(n => n > 0 && Math.abs(n - totalAmt) > totalAmt * 0.05) || [];
-
     let fee = 0, tax = 0;
     if (others.length >= 2) { fee = others[0]; tax = others[1]; }
     else if (others.length === 1) { fee = others[0]; }
     else {
-      // Estimate from standard TW rates if not found in text
       fee = Math.max(20, Math.round(totalAmt * 0.001425));
       tax = action === 'sell' ? Math.round(totalAmt * 0.003) : 0;
     }
-
-    return {
-      date:     dateStr.replace(/\//g, '-'),
-      symbol,
-      name:     nameRaw.trim() || symbol,
-      action,
-      quantity: qty,
-      price,
-      fee,
-      tax,
-      market:   'TW',
-    };
+    return { date: dateStr.replace(/\//g, '-'), symbol, name: nameRaw.trim() || symbol, action, quantity: qty, price, fee, tax, market: 'TW' };
   }
 
   function _renderStockParsedTrades(container, extraHtml = '') {
