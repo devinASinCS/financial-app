@@ -299,7 +299,7 @@ const PageSettings = (() => {
 
   // 國泰證券 證券日對帳單 — domestic TW stocks
   function _parseCathayTWDaily(text) {
-    const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const lines = text.split('\n').map(l => l.replace(/\|/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
 
     // First YYYY/MM/DD in document = trade date
     let tradeDate = null;
@@ -340,7 +340,7 @@ const PageSettings = (() => {
 
   // 國泰綜合證券 客戶日買賣報告書 — US / overseas stocks
   function _parseCathayUSReport(text) {
-    const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const lines = text.split('\n').map(l => l.replace(/\|/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
 
     // Report date from header: "2026年04月27日"
     let reportDate = null;
