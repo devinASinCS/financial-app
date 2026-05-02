@@ -3,6 +3,26 @@
  */
 const PageBanks = (() => {
 
+  function _fmtWallet(w) {
+    const bal = w.balance || 0;
+    if (w.currency === 'TWD') return Utils.formatTWD(bal);
+    if (w.currency === 'USD') return Utils.formatUSD(bal);
+    return bal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + w.currency;
+  }
+
+  function _renderWallets(bank) {
+    const wallets = bank.wallets || [{ currency: bank.currency || 'TWD', balance: bank.balance || 0 }];
+    return wallets.map(w => `
+      <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+        <span style="font-size:${wallets.length === 1 ? '22px' : '18px'};font-weight:800;color:#3B82F6;">${_fmtWallet(w)}</span>
+        <span style="font-size:11px;color:#94A3B8;font-weight:500;">${w.currency}</span>
+        <button onclick="PageBanks.openAdjustBalance('${bank.id}','${w.currency}')"
+          style="font-size:11px;color:#6366F1;background:none;border:1px solid #C7D2FE;border-radius:5px;padding:2px 8px;cursor:pointer;">
+          調整餘額
+        </button>
+      </div>`).join('');
+  }
+
   function render() {
     document.getElementById('app-content').innerHTML = `
       <div class="page-header">
@@ -111,11 +131,7 @@ const PageBanks = (() => {
             <div>
               <div style="font-size:18px;font-weight:700;color:#1E293B;">🏦 ${bank.name}</div>
               <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-                <span style="font-size:22px;font-weight:800;color:#3B82F6;">${Utils.formatTWD(bank.balance || 0)}</span>
-                <button onclick="PageBanks.openAdjustBalance('${bank.id}')"
-                  style="font-size:11px;color:#6366F1;background:none;border:1px solid #C7D2FE;border-radius:5px;padding:2px 8px;cursor:pointer;">
-                  調整餘額
-                </button>
+                ${_renderWallets(bank)}
               </div>
               ${cards.length > 0 ? `<div style="font-size:12px;color:#64748B;margin-top:2px;">${cards.length} 張卡片${totalLimit > 0 ? ' · 信用總額度 ' + Utils.formatTWD(totalLimit) : ''}</div>` : ''}
             </div>
@@ -179,9 +195,11 @@ const PageBanks = (() => {
     _renderList();
   }
 
-  function openAdjustBalance(bankId) {
+  function openAdjustBalance(bankId, currency = 'TWD') {
     const bank = Store.getBanks().find(b => b.id === bankId);
     if (!bank) return;
+    const wallets = bank.wallets || [{ currency: bank.currency || 'TWD', balance: bank.balance || 0 }];
+    const wallet  = wallets.find(w => w.currency === currency) || wallets[0];
 
     Modal.open(`
       <div class="modal-header">
@@ -190,20 +208,24 @@ const PageBanks = (() => {
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">目前餘額 (NT$)</label>
-          <input type="number" id="adj-balance" class="form-input" value="${bank.balance || 0}" step="1">
+          <label class="form-label">目前餘額 (${wallet.currency})</label>
+          <input type="number" id="adj-balance" class="form-input" value="${wallet.balance || 0}" step="0.01">
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
-        <button class="btn btn-primary" onclick="PageBanks._saveBalance('${bankId}')">儲存</button>
+        <button class="btn btn-primary" onclick="PageBanks._saveBalance('${bankId}','${wallet.currency}')">儲存</button>
       </div>
     `, () => { _renderList(); });
   }
 
-  function _saveBalance(bankId) {
+  function _saveBalance(bankId, currency = 'TWD') {
     const balance = parseFloat(document.getElementById('adj-balance').value || 0);
-    Store.updateBank(bankId, { balance });
+    const bank    = Store.getBanks().find(b => b.id === bankId);
+    if (!bank) return;
+    const wallets    = bank.wallets || [{ currency: bank.currency || 'TWD', balance: bank.balance || 0 }];
+    const newWallets = wallets.map(w => w.currency === currency ? { ...w, balance } : w);
+    Store.updateBank(bankId, { wallets: newWallets });
     Utils.showToast('餘額已更新');
     Modal.close();
   }

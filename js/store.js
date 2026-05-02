@@ -64,9 +64,18 @@ const Store = (() => {
     if (!tx || tx.paymentMethod !== 'bank_transfer' || !tx.bankId) return;
     const bank = getBanks().find(b => b.id === tx.bankId);
     if (!bank) return;
-    let delta = tx.type === 'expense' ? -(tx.amount) : tx.amount;
+    const wallets = bank.wallets || [{ currency: 'TWD', balance: bank.balance || 0 }];
+    const hasFX = tx.foreignCurrency && tx.foreignAmount != null;
+    const targetCur = hasFX ? tx.foreignCurrency : 'TWD';
+    const useAmt    = hasFX ? tx.foreignAmount  : tx.amount;
+    let wIdx = wallets.findIndex(w => w.currency === targetCur);
+    let amt  = useAmt;
+    if (wIdx === -1) { wIdx = wallets.findIndex(w => w.currency === 'TWD'); amt = tx.amount; }
+    if (wIdx === -1) return;
+    let delta = tx.type === 'expense' ? -amt : amt;
     if (reverse) delta = -delta;
-    updateBank(bank.id, { balance: (bank.balance || 0) + delta });
+    const newWallets = wallets.map((w, i) => i === wIdx ? { ...w, balance: (w.balance || 0) + delta } : w);
+    updateBank(bank.id, { wallets: newWallets });
   }
 
   function addTransaction(tx) {
@@ -142,11 +151,16 @@ const Store = (() => {
   }
 
   // ── Bank CRUD ───────────────────────────────────────────────────
-  function getBanks() { return load(KEYS.banks, []); }
+  function _migrateBank(b) {
+    if (b.wallets) return b;
+    return { ...b, wallets: [{ currency: b.currency || 'TWD', balance: b.balance || 0 }] };
+  }
+  function getBanks() { return load(KEYS.banks, []).map(_migrateBank); }
 
   function addBank(bank) {
     const list = getBanks();
-    const item = { id: uid(), creditCards: [], balance: 0, ...bank };
+    const wallets = bank.wallets || [{ currency: 'TWD', balance: 0 }];
+    const item = { id: uid(), creditCards: [], name: bank.name || '', wallets };
     list.push(item);
     save(KEYS.banks, list);
     return item;

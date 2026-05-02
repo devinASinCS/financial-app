@@ -206,6 +206,21 @@ export default {
         return jsonResp({ ok: true, removed: queue.length - filtered.length });
       }
 
+      if (action === 'clear_stock_pdf_items') {
+        if (!env.CASHIO_KV) {
+          return jsonResp({ ok: false, error: 'CASHIO_KV not configured' }, 500);
+        }
+        if (!Array.isArray(body.itemIds) || body.itemIds.length === 0) {
+          return jsonResp({ ok: false, error: 'itemIds array required' }, 400);
+        }
+        const raw = await env.CASHIO_KV.get('stock_pdf_queue');
+        const queue = raw ? JSON.parse(raw) : [];
+        const idSet = new Set(body.itemIds);
+        const filtered = queue.filter(item => !idSet.has(item.id));
+        await env.CASHIO_KV.put('stock_pdf_queue', JSON.stringify(filtered));
+        return jsonResp({ ok: true, removed: queue.length - filtered.length });
+      }
+
       return jsonResp({ ok: false, error: `Unknown action: ${action}` }, 400);
     } catch (e) {
       return jsonResp({ ok: false, error: e.message }, 500);

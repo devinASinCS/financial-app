@@ -668,9 +668,27 @@ const Modal = (() => {
   }
 
   // ── Bank Modal ──────────────────────────────────────────────────
+  const _CURRENCIES = ['TWD','USD','JPY','EUR','GBP','HKD','AUD','SGD','KRW','THB','MYR','CNY'];
+
+  function _walletRow(w = { currency: 'TWD', balance: 0 }) {
+    const opts = _CURRENCIES.map(c => `<option value="${c}" ${c === w.currency ? 'selected' : ''}>${c}</option>`).join('');
+    return `<div class="wallet-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+      <select class="form-input" style="width:90px;flex-shrink:0;" data-wallet-currency>${opts}</select>
+      <input type="number" class="form-input" style="flex:1;" placeholder="0" step="0.01" data-wallet-balance value="${w.balance || 0}">
+      <button type="button" onclick="this.closest('.wallet-row').remove()"
+        style="background:none;border:none;color:#dc2626;font-size:18px;cursor:pointer;line-height:1;padding:0 4px;">✕</button>
+    </div>`;
+  }
+
+  function _addBankWallet() {
+    document.getElementById('bank-wallets').insertAdjacentHTML('beforeend', _walletRow());
+  }
+
   function openBank(existing = null, onSave) {
     const isEdit = !!(existing && existing.id);
-    const b = existing || { name: '', balance: 0 };
+    const b = existing || { name: '', wallets: [{ currency: 'TWD', balance: 0 }] };
+    const wallets = b.wallets || [{ currency: b.currency || 'TWD', balance: b.balance || 0 }];
+    const walletRows = wallets.map(_walletRow).join('');
 
     open(`
       <div class="modal-header">
@@ -683,8 +701,10 @@ const Modal = (() => {
           <input type="text" id="bank-name" class="form-input" placeholder="例：玉山銀行、國泰世華" value="${b.name}">
         </div>
         <div class="form-group">
-          <label class="form-label">目前餘額 (NT$)</label>
-          <input type="number" id="bank-balance" class="form-input" placeholder="0" value="${b.balance || 0}" step="1">
+          <label class="form-label" style="margin-bottom:6px;">帳戶幣別與餘額</label>
+          <div id="bank-wallets">${walletRows}</div>
+          <button type="button" onclick="Modal._addBankWallet()"
+            class="btn btn-secondary btn-sm" style="margin-top:4px;">＋ 新增外幣帳戶</button>
         </div>
       </div>
       <div class="modal-footer">
@@ -697,16 +717,21 @@ const Modal = (() => {
   }
 
   function _saveBank(existingId) {
-    const name    = document.getElementById('bank-name').value.trim();
-    const balance = parseFloat(document.getElementById('bank-balance').value || 0);
-
+    const name = document.getElementById('bank-name').value.trim();
     if (!name) { Utils.showToast('請填寫銀行名稱'); return; }
 
+    const rows = document.querySelectorAll('.wallet-row');
+    const wallets = Array.from(rows).map(r => ({
+      currency: r.querySelector('[data-wallet-currency]').value,
+      balance:  parseFloat(r.querySelector('[data-wallet-balance]').value || 0),
+    })).filter(w => w.currency);
+    if (wallets.length === 0) wallets.push({ currency: 'TWD', balance: 0 });
+
     if (existingId) {
-      Store.updateBank(existingId, { name, balance });
+      Store.updateBank(existingId, { name, wallets });
       Utils.showToast('已更新');
     } else {
-      Store.addBank({ name, balance });
+      Store.addBank({ name, wallets });
       Utils.showToast('已新增');
     }
     close();
@@ -1325,7 +1350,7 @@ const Modal = (() => {
     openStockTrade, _onTradeSymbolInput, _updateTradePreview, _saveTrade,
     openDividend, _onDivSymbolInput, _saveDiv,
     openImport, _doImport,
-    openBank, _saveBank,
+    openBank, _saveBank, _addBankWallet,
     openCreditCard, _onCardTypeChange, _saveCreditCard,
     openSubscription, _onSubBankChange, _saveSubscription,
     openDcaPlan, _onDcaSymbolInput, _onDcaBankChange, _saveDcaPlan,

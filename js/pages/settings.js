@@ -228,7 +228,33 @@ const PageSettings = (() => {
     const selected = _stockParsed.filter(t => t._checked);
     if (!selected.length) { Utils.showToast('請先勾選要匯入的交易'); return; }
 
+    const divBankVal      = document.getElementById('div-bank-select')?.value || '';
+    const [divBankId, divBankCurrency] = divBankVal ? divBankVal.split(':') : [null, 'USD'];
+    const usdRate   = Store.getExchangeRate('USD');
+
     for (const t of selected) {
+      if (t.action === 'dividend') {
+        Store.addDividend({
+          date: t.date, symbol: t.symbol, name: t.name,
+          market: t.market, cashTotal: t.dividendNet,
+          stockShares: 0, note: 'PDF匯入',
+        });
+        if (t.dividendNet > 0) {
+          Store.addTransaction({
+            date: t.date, type: 'income',
+            amount: Math.round(t.dividendNet * usdRate * 100) / 100,
+            category: '股利',
+            note: `${t.symbol} ${t.name} 美股股利`,
+            source: 'dividend',
+            paymentMethod: divBankId ? 'bank_transfer' : 'cash',
+            bankId: divBankId || null,
+            foreignAmount: t.dividendNet,
+            foreignCurrency: divBankCurrency || 'USD',
+            exchangeRate: usdRate,
+          });
+        }
+        continue;
+      }
       Store.addStockTrade({
         date: t.date, symbol: t.symbol, name: t.name,
         action: t.action, quantity: t.quantity, price: t.price,
@@ -240,18 +266,19 @@ const PageSettings = (() => {
     const workerUrl = NotionSync.getWorkerUrl();
     if (workerUrl) {
       const doneIds = [...new Set(selected.map(t => t._srcId))];
-      await Promise.all(doneIds.map(id =>
-        fetch(workerUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'clear_stock_pdf_item', itemId: id }),
-        }).catch(() => {})
-      ));
+      await fetch(workerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'clear_stock_pdf_items', itemIds: doneIds }),
+      }).catch(() => {});
       _stockPdfItems = _stockPdfItems.filter(item => !doneIds.includes(item.id));
     }
 
     _stockParsed = _stockParsed.filter(t => !t._checked);
-    Utils.showToast(`✅ 已匯入 ${selected.length} 筆股票交易`);
+    const divCount   = selected.filter(t => t.action === 'dividend').length;
+    const tradeCount = selected.length - divCount;
+    const msg = [tradeCount > 0 && `${tradeCount} 筆交易`, divCount > 0 && `${divCount} 筆股利`].filter(Boolean).join('、');
+    Utils.showToast(`✅ 已匯入 ${msg}`);
     PageSettings.render();
   }
 
@@ -283,8 +310,8 @@ const PageSettings = (() => {
   }
 
   function _parseTWStockStatement(text, broker) {
-    if (/海外股票交易明細|客戶.*買賣報告書/.test(text)) return _parseCathayUSReport(text);
-    if (/證券日對帳單/.test(text))                       return _parseCathayTWDaily(text);
+    if (/海外股票交易明細/.test(text))  return _parseCathayUSReport(text);
+    if (/客戶日對帳單/.test(text))      return _parseCathayTWDaily(text);
 
     // Generic fallback
     const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
@@ -361,10 +388,10 @@ const PageSettings = (() => {
     const trades = [];
     const seen = new Set();
     for (const record of records) {
-      // ref  SYMBOL/Name  市場  買進/賣出  currency  shares  price  amt  fee  tax  ...  date
-      const m = record.match(/^\d{8}\s+([A-Z0-9.]+)\/(.+?)\s+(美國|日本|香港|英國|德國)\s+(買進?|賣出?)\s+\S+\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+).*?(\d{4}\/\d{2}\/\d{2})/);
+      // Actual line order: ref SYMBOL/Name USD price net(±) 美國 action shares amt fee tax date
+      const m = record.match(/^\d{8}\s+([A-Z0-9.]+)\/(.+?)\s+\S+\s+([\d.]+)\s+(-?[\d.]+)\s+(美國|日本|香港|英國|德國)\s+(買進?|賣出?|除息)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+).*?(\d{4}\/\d{2}\/\d{2})/);
       if (!m) continue;
-      const [, symbol, nameRaw, marketStr, actionStr, sharesStr, priceStr, , feeStr, taxStr, settleDateStr] = m;
+      const [, symbol, nameRaw, priceStr, netStr, marketStr, actionStr, sharesStr, , feeStr, taxStr, settleDateStr] = m;
       const shares = parseFloat(sharesStr);
       const price  = parseFloat(priceStr);
       if (!shares || !price) continue;
@@ -377,14 +404,15 @@ const PageSettings = (() => {
         tradeDate = d.toISOString().slice(0, 10);
       }
 
-      const action = /買/.test(actionStr) ? 'buy' : 'sell';
+      const action = actionStr === '除息' ? 'dividend' : /買/.test(actionStr) ? 'buy' : 'sell';
       const fee    = parseFloat(feeStr) || 0;
       const tax    = parseFloat(taxStr) || 0;
       const market = marketStr === '美國' ? 'US' : 'TW';
       const k = `${tradeDate}|${symbol}|${shares}|${price}|${action}`;
       if (seen.has(k)) continue;
       seen.add(k);
-      trades.push({ date: tradeDate, symbol, name: nameRaw.trim(), action, quantity: shares, price, fee, tax, market });
+      const dividendNet = action === 'dividend' ? Math.abs(parseFloat(netStr || 0)) : 0;
+      trades.push({ date: tradeDate, symbol, name: nameRaw.trim(), action, quantity: shares, price, fee, tax, market, dividendNet });
     }
     return trades;
   }
@@ -421,6 +449,17 @@ const PageSettings = (() => {
       return;
     }
     const count = _stockParsed.filter(t => t._checked).length;
+    const hasDividends = _stockParsed.some(t => t.action === 'dividend');
+    const divBankHtml = hasDividends ? (() => {
+      const banks = Store.getBanks();
+      const opts = banks.flatMap(b => (b.wallets || [{currency: b.currency || 'TWD', balance: 0}]).map(w => `<option value="${b.id}:${w.currency}">${b.name} (${w.currency})</option>`)).join('');
+      return `<div style="margin-bottom:12px;padding:10px 14px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-weight:600;color:#5b21b6;">💰 除息入帳銀行：</span>
+        <select id="div-bank-select" class="form-input" style="width:auto;">
+          <option value="">不連結銀行</option>${opts}
+        </select>
+      </div>`;
+    })() : '';
     const rows  = _stockParsed.map(t => `
       <tr>
         <td style="text-align:center;">
@@ -430,8 +469,8 @@ const PageSettings = (() => {
         <td style="font-size:12px;white-space:nowrap;">${t.date}</td>
         <td style="font-size:12px;font-weight:600;">${t.symbol}</td>
         <td style="font-size:12px;">${t.name}</td>
-        <td style="font-size:12px;color:${t.action === 'buy' ? '#16a34a' : '#dc2626'};font-weight:600;">
-          ${t.action === 'buy' ? '買進' : '賣出'}
+        <td style="font-size:12px;color:${t.action === 'buy' ? '#16a34a' : t.action === 'sell' ? '#dc2626' : '#7c3aed'};font-weight:600;">
+          ${t.action === 'buy' ? '買進' : t.action === 'sell' ? '賣出' : '除息'}
         </td>
         <td style="font-size:12px;text-align:right;">${t.quantity.toLocaleString()}</td>
         <td style="font-size:12px;text-align:right;">${t.price.toFixed(2)}</td>
@@ -441,6 +480,7 @@ const PageSettings = (() => {
       </tr>`).join('');
 
     container.innerHTML = extraHtml + `
+      ${divBankHtml}
       <div style="overflow-x:auto;margin-top:8px;">
         <table class="data-table" style="font-size:12px;min-width:600px;">
           <thead><tr>
@@ -523,8 +563,8 @@ const PageSettings = (() => {
           將所有資料匯出為 JSON 檔案，或從備份檔還原。
         </p>
         <div style="display:flex;gap:12px;flex-wrap:wrap;">
-          <button class="btn-primary" onclick="PageSettings.exportJSON()">⬇️ 匯出 JSON 備份</button>
-          <button class="btn-secondary" onclick="PageSettings.triggerImport()">⬆️ 匯入 JSON 備份</button>
+          <button class="btn btn-primary" onclick="PageSettings.exportJSON()">⬇️ 匯出 JSON 備份</button>
+          <button class="btn btn-secondary" onclick="PageSettings.triggerImport()">⬆️ 匯入 JSON 備份</button>
         </div>
         <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-top:14px;">
           <p style="font-size:13px;color:#0369a1;margin:0;">
@@ -554,7 +594,7 @@ const PageSettings = (() => {
             <input id="worker-url-input" class="form-input" type="url"
               placeholder="https://finance-notion-sync.your-name.workers.dev"
               value="${workerUrl.replace(/"/g, '&quot;')}">
-            <button class="btn-secondary" style="white-space:nowrap;" onclick="PageSettings.saveWorkerUrl()">儲存</button>
+            <button class="btn btn-secondary" style="white-space:nowrap;" onclick="PageSettings.saveWorkerUrl()">儲存</button>
           </div>
         </div>
 
@@ -585,13 +625,13 @@ const PageSettings = (() => {
 
         <!-- Action buttons -->
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;">
-          <button id="btn-ping" class="btn-secondary" onclick="PageSettings.testConnection()" ${configured ? '' : 'disabled'}>
+          <button id="btn-ping" class="btn btn-secondary" onclick="PageSettings.testConnection()" ${configured ? '' : 'disabled'}>
             🔌 測試連線
           </button>
-          <button id="btn-notion-save" class="btn-primary" onclick="PageSettings.notionSave()" ${configured ? '' : 'disabled'}>
+          <button id="btn-notion-save" class="btn btn-primary" onclick="PageSettings.notionSave()" ${configured ? '' : 'disabled'}>
             ⬆ 上傳到 Notion
           </button>
-          <button id="btn-notion-load" class="btn-secondary" onclick="PageSettings.notionLoad()" ${configured ? '' : 'disabled'}>
+          <button id="btn-notion-load" class="btn btn-secondary" onclick="PageSettings.notionLoad()" ${configured ? '' : 'disabled'}>
             ⬇ 從 Notion 載入
           </button>
         </div>
@@ -732,7 +772,7 @@ const PageSettings = (() => {
         <p style="font-size:14px;color:#6b7280;margin:8px 0 16px;">
           以下操作會永久刪除資料，執行前請先下載備份。
         </p>
-        <button class="btn-danger" onclick="PageSettings.clearAllData()">🗑️ 清除所有資料</button>
+        <button class="btn btn-danger" onclick="PageSettings.clearAllData()">🗑️ 清除所有資料</button>
       </div>
     `;
   }
