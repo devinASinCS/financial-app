@@ -12,25 +12,41 @@ const PageBanks = (() => {
 
   function _renderWallets(bank) {
     const wallets = bank.wallets || [{ currency: bank.currency || 'TWD', balance: bank.balance || 0 }];
-    return wallets.map(w => `
-      <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-        <span style="font-size:${wallets.length === 1 ? '22px' : '18px'};font-weight:800;color:#3B82F6;">${_fmtWallet(w)}</span>
-        <span style="font-size:11px;color:#94A3B8;font-weight:500;">${w.currency}</span>
-        <button onclick="PageBanks.openAdjustBalance('${bank.id}','${w.currency}')"
-          style="font-size:11px;color:#6366F1;background:none;border:1px solid #C7D2FE;border-radius:5px;padding:2px 8px;cursor:pointer;">
-          調整餘額
-        </button>
-      </div>`).join('');
+    const twd    = wallets.find(w => w.currency === 'TWD');
+    const others = wallets.filter(w => w.currency !== 'TWD');
+    const primary = twd || wallets[0];
+    const rest    = twd ? others : wallets.slice(1);
+    if (!primary) return '';
+
+    const adjBtn = (currency) =>
+      `<button class="btn btn-xs btn-ghost" style="color:#6366F1;min-height:unset;height:22px;padding:0 6px;" onclick="PageBanks.openAdjustBalance('${bank.id}','${currency}')">
+        <i class="fa-solid fa-pen-to-square" style="font-size:10px;"></i>
+      </button>`;
+
+    let html = `<div style="display:flex;align-items:center;gap:4px;margin-top:4px;">
+      <span style="font-size:22px;font-weight:800;color:#3B82F6;">${_fmtWallet(primary)}</span>
+      ${adjBtn(primary.currency)}
+    </div>`;
+
+    rest.forEach(w => {
+      html += `<div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
+        <span style="font-size:13px;font-weight:700;color:#64748B;">${_fmtWallet(w)}</span>
+        <span style="font-size:10px;color:#94A3B8;background:#F1F5F9;border-radius:4px;padding:1px 5px;font-weight:600;">${w.currency}</span>
+        ${adjBtn(w.currency)}
+      </div>`;
+    });
+
+    return html;
   }
 
   function render() {
     document.getElementById('app-content').innerHTML = `
       <div class="page-header">
         <div>
-          <div class="page-title">🏦 銀行設定</div>
+          <div class="page-title"><i class="fa-solid fa-building-columns" style="color:#10B981;margin-right:8px;font-size:18px;"></i>銀行設定</div>
           <div class="page-subtitle">管理銀行帳戶與信用卡</div>
         </div>
-        <button class="btn btn-primary" onclick="PageBanks.openAddBank()">＋ 新增銀行</button>
+        <button class="btn btn-primary gap-2" onclick="PageBanks.openAddBank()"><i class="fa-solid fa-plus fa-xs"></i> 新增銀行</button>
       </div>
       <div id="banks-list"></div>
     `;
@@ -46,9 +62,9 @@ const PageBanks = (() => {
       wrap.innerHTML = `
         <div class="card">
           <div class="empty-state">
-            <div class="empty-state-icon">🏦</div>
+            <div class="empty-state-icon"><i class="fa-solid fa-building-columns" style="color:#CBD5E1;"></i></div>
             <div class="empty-state-text">尚未新增任何銀行帳戶</div>
-            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageBanks.openAddBank()">＋ 新增第一個銀行</button>
+            <button class="btn btn-primary gap-2" style="margin-top:12px;" onclick="PageBanks.openAddBank()"><i class="fa-solid fa-plus fa-xs"></i> 新增第一個銀行</button>
           </div>
         </div>`;
       return;
@@ -71,18 +87,17 @@ const PageBanks = (() => {
                 <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;margin-bottom:8px;">
                   <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
-                      <div style="font-weight:600;font-size:14px;margin-bottom:2px;">🏧 ${card.name}</div>
+                      <div style="font-weight:600;font-size:14px;margin-bottom:2px;display:flex;align-items:center;gap:6px;"><i class="fa-solid fa-credit-card" style="color:#6B7280;font-size:13px;"></i> ${card.name}</div>
                       <div style="font-size:12px;color:#64748B;">簽帳金融卡</div>
                     </div>
-                    <div style="display:flex;gap:6px;">
-                      <button class="btn btn-secondary btn-sm" onclick="PageBanks.openEditCard('${bank.id}','${card.id}')">編輯</button>
-                      <button class="btn btn-danger btn-sm" onclick="PageBanks.delCard('${bank.id}','${card.id}')">刪除</button>
+                    <div style="display:flex;gap:4px;">
+                      <button class="btn btn-sm btn-ghost gap-1" onclick="PageBanks.openEditCard('${bank.id}','${card.id}')"><i class="fa-solid fa-pen fa-xs"></i> 編輯</button>
+                      <button class="btn btn-sm btn-ghost text-error gap-1" onclick="PageBanks.delCard('${bank.id}','${card.id}')"><i class="fa-solid fa-trash fa-xs"></i> 刪除</button>
                     </div>
                   </div>
                 </div>`;
             }
 
-            // Credit card — show usage bar
             const monthSpend = allTx.filter(t =>
               t.type === 'expense' &&
               t.paymentMethod === 'credit_card' &&
@@ -97,7 +112,7 @@ const PageBanks = (() => {
               <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;margin-bottom:8px;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                   <div style="flex:1;">
-                    <div style="font-weight:600;font-size:14px;margin-bottom:4px;">💳 ${card.name}</div>
+                    <div style="font-weight:600;font-size:14px;margin-bottom:4px;display:flex;align-items:center;gap:6px;"><i class="fa-solid fa-credit-card" style="color:#6366F1;font-size:13px;"></i> ${card.name}</div>
                     <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#64748B;">
                       ${card.limit > 0 ? `<span>額度：<strong style="color:#374151;">${Utils.formatTWD(card.limit)}</strong></span>` : ''}
                       <span>結算日：每月 <strong style="color:#374151;">${card.statementDay}</strong> 日</span>
@@ -115,9 +130,9 @@ const PageBanks = (() => {
                       </div>
                     ` : ''}
                   </div>
-                  <div style="display:flex;gap:6px;margin-left:12px;">
-                    <button class="btn btn-secondary btn-sm" onclick="PageBanks.openEditCard('${bank.id}','${card.id}')">編輯</button>
-                    <button class="btn btn-danger btn-sm" onclick="PageBanks.delCard('${bank.id}','${card.id}')">刪除</button>
+                  <div style="display:flex;gap:4px;margin-left:12px;flex-shrink:0;">
+                    <button class="btn btn-sm btn-ghost gap-1" onclick="PageBanks.openEditCard('${bank.id}','${card.id}')"><i class="fa-solid fa-pen fa-xs"></i> 編輯</button>
+                    <button class="btn btn-sm btn-ghost text-error gap-1" onclick="PageBanks.delCard('${bank.id}','${card.id}')"><i class="fa-solid fa-trash fa-xs"></i> 刪除</button>
                   </div>
                 </div>
               </div>
@@ -129,15 +144,17 @@ const PageBanks = (() => {
           <!-- Bank Header -->
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
             <div>
-              <div style="font-size:18px;font-weight:700;color:#1E293B;">🏦 ${bank.name}</div>
-              <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+              <div style="font-size:18px;font-weight:700;color:#1E293B;display:flex;align-items:center;gap:8px;">
+                <i class="fa-solid fa-building-columns" style="color:#10B981;font-size:15px;"></i>${bank.name}
+              </div>
+              <div style="margin-top:4px;">
                 ${_renderWallets(bank)}
               </div>
-              ${cards.length > 0 ? `<div style="font-size:12px;color:#64748B;margin-top:2px;">${cards.length} 張卡片${totalLimit > 0 ? ' · 信用總額度 ' + Utils.formatTWD(totalLimit) : ''}</div>` : ''}
+              ${cards.length > 0 ? `<div style="font-size:12px;color:#64748B;margin-top:4px;">${cards.length} 張卡片${totalLimit > 0 ? ' · 信用總額度 ' + Utils.formatTWD(totalLimit) : ''}</div>` : ''}
             </div>
-            <div style="display:flex;gap:8px;">
-              <button class="btn btn-secondary btn-sm" onclick="PageBanks.openEditBank('${bank.id}')">編輯</button>
-              <button class="btn btn-danger btn-sm" onclick="PageBanks.delBank('${bank.id}')">刪除</button>
+            <div style="display:flex;gap:4px;flex-shrink:0;">
+              <button class="btn btn-sm btn-ghost gap-1" onclick="PageBanks.openEditBank('${bank.id}')"><i class="fa-solid fa-pen fa-xs"></i> 編輯</button>
+              <button class="btn btn-sm btn-ghost text-error gap-1" onclick="PageBanks.delBank('${bank.id}')"><i class="fa-solid fa-trash fa-xs"></i> 刪除</button>
             </div>
           </div>
 
@@ -145,7 +162,7 @@ const PageBanks = (() => {
           <div style="border-top:1px solid #E2E8F0;padding-top:14px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
               <div style="font-size:13px;font-weight:600;color:#475569;">卡片</div>
-              <button class="btn btn-secondary btn-sm" onclick="PageBanks.openAddCard('${bank.id}', '${bank.name}')">＋ 新增卡片</button>
+              <button class="btn btn-sm btn-outline gap-1" onclick="PageBanks.openAddCard('${bank.id}', '${bank.name}')"><i class="fa-solid fa-plus fa-xs"></i> 新增卡片</button>
             </div>
             ${cardsHtml}
           </div>
@@ -203,7 +220,7 @@ const PageBanks = (() => {
 
     Modal.open(`
       <div class="modal-header">
-        <span class="modal-title">調整餘額 — ${bank.name}</span>
+        <span class="modal-title"><i class="fa-solid fa-pen-to-square" style="margin-right:6px;color:#6366F1;"></i>調整餘額 — ${bank.name}</span>
         <button class="modal-close" onclick="Modal.close()">✕</button>
       </div>
       <div class="modal-body">
@@ -213,8 +230,8 @@ const PageBanks = (() => {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
-        <button class="btn btn-primary" onclick="PageBanks._saveBalance('${bankId}','${wallet.currency}')">儲存</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
+        <button class="btn btn-primary gap-2" onclick="PageBanks._saveBalance('${bankId}','${wallet.currency}')"><i class="fa-solid fa-floppy-disk fa-xs"></i> 儲存</button>
       </div>
     `, () => { _renderList(); });
   }

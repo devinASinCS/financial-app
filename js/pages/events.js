@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Events page — group transactions by activity (trip, wedding, etc.)
  *
  * Two views:
@@ -37,7 +37,7 @@ const PageEvents = (() => {
              <p style="font-size:13px;color:#6B7280;max-width:340px;text-align:center;margin:8px auto 0;">
                建立活動後，可在新增支出時選擇歸屬，方便計算旅遊、婚禮等專案的總花費。
              </p>
-             <button class="btn btn-primary" style="margin-top:14px;" onclick="PageEvents.openAdd()">＋ 新增活動</button>
+             <button class="btn btn-primary" style="margin-top:14px;" onclick="PageEvents.openAdd()"><i class="fa-solid fa-plus fa-xs"></i> 新增活動</button>
            </div>
          </div>`
       : events.map(e => _eventCard(e)).join('');
@@ -45,11 +45,11 @@ const PageEvents = (() => {
     document.getElementById('app-content').innerHTML = `
       <div class="page-header">
         <div>
-          <div class="page-title">🎯 活動記帳</div>
+          <div class="page-title"><i class="fa-solid fa-calendar-days" style="color:#6366F1;margin-right:8px;font-size:18px;"></i>活動記帳</div>
           <div class="page-subtitle">將支出依活動分組，掌握每次旅遊或專案的總花費</div>
         </div>
         ${events.length > 0
-          ? `<button class="btn btn-primary" onclick="PageEvents.openAdd()">＋ 新增活動</button>`
+          ? `<button class="btn btn-primary" onclick="PageEvents.openAdd()"><i class="fa-solid fa-plus fa-xs"></i> 新增活動</button>`
           : ''}
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;">
@@ -82,7 +82,7 @@ const PageEvents = (() => {
       <div class="card" style="border-top:4px solid ${e.color || '#3B82F6'};position:relative;">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:12px;">
           <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:28px;line-height:1;">${e.icon || '📋'}</span>
+            <span style="font-size:28px;line-height:1;">${e.icon || '<i class="fa-solid fa-clipboard-list" style="color:#6B7280;"></i>'}</span>
             <div>
               <div style="font-weight:700;font-size:16px;color:#111827;">${e.name}</div>
               <div style="font-size:12px;color:#9CA3AF;margin-top:2px;">${dateRange}${daysLabel ? ' · ' + daysLabel : ''}</div>
@@ -106,8 +106,8 @@ const PageEvents = (() => {
           <span style="font-size:13px;color:#6B7280;">${txs.length} 筆紀錄${e.note ? ' · ' + e.note : ''}</span>
           <div style="display:flex;gap:6px;">
             <button class="btn btn-primary btn-sm" onclick="PageEvents.viewEvent('${e.id}')">查看明細</button>
-            <button class="btn btn-secondary btn-sm" onclick="PageEvents.openEdit('${e.id}')">✏️</button>
-            <button class="btn btn-danger btn-sm" onclick="PageEvents.deleteEvent('${e.id}')">🗑️</button>
+            <button class="btn btn-sm btn-ghost gap-1" onclick="PageEvents.openEdit('${e.id}')"><i class="fa-solid fa-pen fa-xs"></i></button>
+            <button class="btn btn-sm btn-ghost text-error gap-1" onclick="PageEvents.deleteEvent('${e.id}')"><i class="fa-solid fa-trash fa-xs"></i></button>
           </div>
         </div>
       </div>
@@ -153,7 +153,7 @@ const PageEvents = (() => {
       ? `<div class="empty-state" style="padding:40px 0;">
            <div class="empty-state-icon">💸</div>
            <div class="empty-state-text">尚未新增任何支出</div>
-           <button class="btn btn-primary" style="margin-top:12px;" onclick="PageEvents.openAddTx()">＋ 新增支出</button>
+           <button class="btn btn-primary" style="margin-top:12px;" onclick="PageEvents.openAddTx()"><i class="fa-solid fa-plus fa-xs"></i> 新增支出</button>
          </div>`
       : `<table class="data-table">
            <thead>
@@ -182,8 +182,8 @@ const PageEvents = (() => {
                    ${_fxLabel(t)}
                  </td>
                  <td class="text-center">
-                   <button class="btn btn-secondary btn-sm" onclick="PageEvents.openEditTx('${t.id}')">編輯</button>
-                   <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="PageEvents.deleteTx('${t.id}')">刪除</button>
+                   <button class="btn btn-sm btn-ghost gap-1" onclick="PageEvents.openEditTx('${t.id}')">編輯</button>
+                   <button class="btn btn-sm btn-ghost text-error gap-1" style="margin-left:4px;" onclick="PageEvents.deleteTx('${t.id}')">刪除</button>
                  </td>
                </tr>
              `).join('')}
@@ -212,9 +212,9 @@ const PageEvents = (() => {
     document.getElementById('app-content').innerHTML = `
       <div class="page-header">
         <div style="display:flex;align-items:center;gap:12px;">
-          <button class="btn btn-secondary btn-sm" onclick="PageEvents.render()" style="font-size:16px;padding:4px 10px;">←</button>
+          <button class="btn btn-sm btn-ghost gap-1" onclick="PageEvents.render()" style="font-size:16px;padding:4px 10px;">←</button>
           <div>
-            <div class="page-title">${event.icon || '📋'} ${event.name}</div>
+            <div class="page-title">${event.icon || '<i class="fa-solid fa-clipboard-list" style="color:#6B7280;"></i>'} ${event.name}</div>
             <div class="page-subtitle">
               ${event.startDate && event.endDate
                 ? `${Utils.formatDate(event.startDate)} ─ ${Utils.formatDate(event.endDate)}${daysLabel ? ' · ' + daysLabel : ''}`
@@ -225,9 +225,9 @@ const PageEvents = (() => {
           </div>
         </div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-secondary" onclick="Modal.openExchangeRates()">💱 匯率</button>
-          <button class="btn btn-secondary" onclick="PageEvents.openEdit('${event.id}')">✏️ 編輯活動</button>
-          <button class="btn btn-secondary" onclick="PageEvents.openAddTx()">＋ 新增收支</button>
+          <button class="btn btn-secondary" onclick="Modal.openExchangeRates()"><i class="fa-solid fa-right-left fa-xs"></i> 匯率</button>
+          <button class="btn btn-secondary" onclick="PageEvents.openEdit('${event.id}')"><i class="fa-solid fa-pen fa-xs"></i> 編輯活動</button>
+          <button class="btn btn-secondary" onclick="PageEvents.openAddTx()"><i class="fa-solid fa-plus fa-xs"></i> 新增收支</button>
         </div>
       </div>
 

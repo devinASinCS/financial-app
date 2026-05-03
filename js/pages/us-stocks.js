@@ -1,4 +1,4 @@
-/**
+﻿/**
  * US Stocks page — mirrors TW Stocks but in USD
  */
 const PageUSStocks = (() => {
@@ -13,7 +13,7 @@ const PageUSStocks = (() => {
     document.getElementById('app-content').innerHTML = `
       <div class="page-header">
         <div>
-          <div class="page-title">🇺🇸 美股投資組合</div>
+          <div class="page-title"><i class="fa-solid fa-chart-bar" style="color:#3B82F6;margin-right:8px;font-size:18px;"></i>美股投資組合</div>
           <div class="page-subtitle">美國上市股票 (USD)</div>
         </div>
         <div style="display:flex;gap:8px;" id="us-action-btns"></div>
@@ -37,13 +37,13 @@ const PageUSStocks = (() => {
 
       <!-- Tabs -->
       <div class="tab-bar">
-        <button class="tab-btn ${_activeTab==='holdings'?'active':''}" onclick="PageUSStocks.switchTab('holdings')">📋 持股</button>
-        <button class="tab-btn ${_activeTab==='trades'?'active':''}" onclick="PageUSStocks.switchTab('trades')">🔄 交易</button>
-        <button class="tab-btn ${_activeTab==='dividends'?'active':''}" onclick="PageUSStocks.switchTab('dividends')">💵 股利</button>
+        <button class="tab-btn ${_activeTab==='holdings'?'active':''}" onclick="PageUSStocks.switchTab('holdings')">持股</button>
+        <button class="tab-btn ${_activeTab==='trades'?'active':''}" onclick="PageUSStocks.switchTab('trades')">交易</button>
+        <button class="tab-btn ${_activeTab==='dividends'?'active':''}" onclick="PageUSStocks.switchTab('dividends')">股利</button>
         <button class="tab-btn ${_activeTab==='dca'?'active':''}" onclick="PageUSStocks.switchTab('dca')">
-          📅 定額${pendingDca.length > 0 ? ` <span style="background:#EF4444;color:white;border-radius:10px;padding:1px 6px;font-size:10px;">${pendingDca.length}</span>` : ''}
+          定額${pendingDca.length > 0 ? ` <span style="background:#EF4444;color:white;border-radius:10px;padding:1px 6px;font-size:10px;">${pendingDca.length}</span>` : ''}
         </button>
-        <button class="tab-btn ${_activeTab==='pnl'?'active':''}" onclick="PageUSStocks.switchTab('pnl')">📈 損益</button>
+        <button class="tab-btn ${_activeTab==='pnl'?'active':''}" onclick="PageUSStocks.switchTab('pnl')">損益</button>
       </div>
 
       <div id="us-tab-content"></div>
@@ -121,11 +121,11 @@ const PageUSStocks = (() => {
   function _renderActionBtns() {
     const btns = {
       holdings:  `<button class="btn btn-secondary" onclick="PageUSStocks.openImport()">📥 匯入</button>
-                  <button class="btn btn-primary" onclick="PageUSStocks.openAddTrade()">＋ 新增交易</button>`,
+                  <button class="btn btn-primary" onclick="PageUSStocks.openAddTrade()"><i class="fa-solid fa-plus fa-xs"></i> 新增交易</button>`,
       trades:    `<button class="btn btn-secondary" onclick="PageUSStocks.openImport()">📥 匯入</button>
-                  <button class="btn btn-primary" onclick="PageUSStocks.openAddTrade()">＋ 新增交易</button>`,
-      dividends: `<button class="btn btn-primary" onclick="PageUSStocks.openAddDividend()">＋ 新增股利</button>`,
-      dca:       `<button class="btn btn-primary" onclick="PageUSStocks.openAddDca()">＋ 新增定期定額</button>`,
+                  <button class="btn btn-primary" onclick="PageUSStocks.openAddTrade()"><i class="fa-solid fa-plus fa-xs"></i> 新增交易</button>`,
+      dividends: `<button class="btn btn-primary" onclick="PageUSStocks.openAddDividend()"><i class="fa-solid fa-plus fa-xs"></i> 新增股利</button>`,
+      dca:       `<button class="btn btn-primary" onclick="PageUSStocks.openAddDca()"><i class="fa-solid fa-plus fa-xs"></i> 新增定期定額</button>`,
       pnl:       '',
     };
     document.getElementById('us-action-btns').innerHTML = btns[_activeTab] || '';
@@ -193,8 +193,8 @@ const PageUSStocks = (() => {
           </div>
           <div style="font-size:13px;font-weight:700;color:${t.action === 'buy' ? '#ef4444' : '#10b981'};flex-shrink:0;">${t.action === 'buy' ? '-' : '+'}${Utils.formatUSD(net)}</div>
           <div style="display:flex;gap:2px;flex-shrink:0;">
-            <button onclick="event.stopPropagation();PageUSStocks.openEditTrade('${t.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">✏️</button>
-            <button onclick="event.stopPropagation();PageUSStocks.delTrade('${t.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">🗑️</button>
+            <button onclick="event.stopPropagation();PageUSStocks.openEditTrade('${t.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-pen fa-xs"></i></button>
+            <button onclick="event.stopPropagation();PageUSStocks.delTrade('${t.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-trash fa-xs"></i></button>
           </div>
         </div>`;
       }).join('');
@@ -232,8 +232,8 @@ const PageUSStocks = (() => {
           </div>
           <div style="display:flex;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid #f1f5f9;">
             <button class="btn btn-primary btn-sm" onclick="PageUSStocks.openAddTrade('${h.symbol}','${h.name}')">＋ 交易</button>
-            <button class="btn btn-secondary btn-sm" style="color:#8b5cf6;" onclick="PageUSStocks.openAddDividendFor('${h.symbol}')">股利</button>
-            <button id="us-holding-arrow-${h.symbol}" class="btn btn-secondary btn-sm" style="margin-left:auto;"
+            <button class="btn btn-sm btn-ghost gap-1" style="color:#8b5cf6;" onclick="PageUSStocks.openAddDividendFor('${h.symbol}')">股利</button>
+            <button id="us-holding-arrow-${h.symbol}" class="btn btn-sm btn-ghost gap-1" style="margin-left:auto;"
               onclick="PageUSStocks.toggleHoldingTrades('${h.symbol}')">▼ 明細</button>
           </div>
           <div id="us-holding-trades-${h.symbol}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;">
@@ -255,7 +255,7 @@ const PageUSStocks = (() => {
     container.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
         ${lastUpdateStr ? `<span style="font-size:11px;color:#9ca3af;">更新：${lastUpdateStr}</span>` : '<span></span>'}
-        <button class="btn btn-secondary btn-sm" id="us-refresh-btn"
+        <button class="btn btn-sm btn-ghost gap-1" id="us-refresh-btn"
           onclick="PageUSStocks.refreshPrices()" ${_fetchingPrices ? 'disabled' : ''}>
           ${_fetchingPrices ? '更新中…' : '🔄 更新報價'}
         </button>
@@ -312,8 +312,8 @@ const PageUSStocks = (() => {
                   ${t.fee ? `<div><span style="color:#94a3b8;">手續費</span> ${Utils.formatUSD(t.fee)}</div>` : ''}
                 </div>
                 <div style="display:flex;gap:8px;">
-                  <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openEditTrade('${t.id}')">✏️ 編輯</button>
-                  <button class="btn btn-danger btn-sm" onclick="PageUSStocks.delTrade('${t.id}')">🗑️ 刪除</button>
+                  <button class="btn btn-sm btn-ghost gap-1" onclick="PageUSStocks.openEditTrade('${t.id}')"><i class="fa-solid fa-pen fa-xs"></i> 編輯</button>
+                  <button class="btn btn-sm btn-ghost text-error gap-1" onclick="PageUSStocks.delTrade('${t.id}')"><i class="fa-solid fa-trash fa-xs"></i> 刪除</button>
                 </div>
               </div>
             </div>`;
@@ -332,7 +332,7 @@ const PageUSStocks = (() => {
           <div class="empty-state">
             <div class="empty-state-icon">💵</div>
             <div class="empty-state-text">尚無股利紀錄</div>
-            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageUSStocks.openAddDividend()">＋ 新增股利</button>
+            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageUSStocks.openAddDividend()"><i class="fa-solid fa-plus fa-xs"></i> 新增股利</button>
           </div>
         </div>`;
       return;
@@ -368,8 +368,8 @@ const PageUSStocks = (() => {
               ${d.cashTotal > 0 ? '<div style="font-size:13px;font-weight:600;color:#8b5cf6;">' + Utils.formatUSD(d.cashTotal) + '</div>' : ''}
             </div>
             <div style="display:flex;gap:2px;flex-shrink:0;">
-              <button onclick="event.stopPropagation();PageUSStocks.openEditDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">✏️</button>
-              <button onclick="event.stopPropagation();PageUSStocks.delDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">🗑️</button>
+              <button onclick="event.stopPropagation();PageUSStocks.openEditDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-pen fa-xs"></i></button>
+              <button onclick="event.stopPropagation();PageUSStocks.delDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-trash fa-xs"></i></button>
             </div>
           </div>`).join('');
 
@@ -389,7 +389,7 @@ const PageUSStocks = (() => {
             </div>
             <div id="us-div-detail-${g.symbol}" style="display:none;padding:0 16px 12px;">
               <div style="display:flex;justify-content:flex-end;padding-top:8px;padding-bottom:4px;">
-                <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();PageUSStocks.openAddDividendFor('${g.symbol}')">＋ 新增</button>
+                <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();PageUSStocks.openAddDividendFor('${g.symbol}')"><i class="fa-solid fa-plus fa-xs"></i> 新增</button>
               </div>
               ${detailRows}
             </div>
@@ -414,7 +414,7 @@ const PageUSStocks = (() => {
             <p style="font-size:13px;color:#6B7280;max-width:360px;text-align:center;margin:8px auto 0;">
               設定後，系統會在每月執行日提醒你，並根據你輸入的成交價格自動計算股數。
             </p>
-            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageUSStocks.openAddDca()">＋ 新增定期定額</button>
+            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageUSStocks.openAddDca()"><i class="fa-solid fa-plus fa-xs"></i> 新增定期定額</button>
           </div>
         </div>`;
       return;
@@ -465,8 +465,8 @@ const PageUSStocks = (() => {
                   </td>
                   <td class="text-center">
                     ${isDue ? `<button class="btn btn-primary btn-sm" onclick="PageUSStocks.executeDca('${p.id}')" style="margin-right:4px;">執行</button>` : ''}
-                    <button class="btn btn-secondary btn-sm" onclick="PageUSStocks.openEditDca('${p.id}')">編輯</button>
-                    <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="PageUSStocks.delDca('${p.id}')">刪除</button>
+                    <button class="btn btn-sm btn-ghost gap-1" onclick="PageUSStocks.openEditDca('${p.id}')">編輯</button>
+                    <button class="btn btn-sm btn-ghost text-error gap-1" style="margin-left:4px;" onclick="PageUSStocks.delDca('${p.id}')">刪除</button>
                   </td>
                 </tr>`;
             }).join('')}

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Dashboard page — overview of finances
  */
 const PageDashboard = (() => {
@@ -55,7 +55,7 @@ const PageDashboard = (() => {
     document.getElementById('app-content').innerHTML = `
       <div class="page-header">
         <div>
-          <div class="page-title">📊 財務總覽</div>
+          <div class="page-title"><i class="fa-solid fa-chart-pie" style="color:#10B981;margin-right:8px;font-size:18px;"></i>財務總覽</div>
           <div class="page-subtitle">${year}年${month}月</div>
         </div>
       </div>
@@ -88,8 +88,8 @@ const PageDashboard = (() => {
       ${banks.length > 0 ? `
       <div class="card" style="margin-bottom:20px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-          <div class="card-title">🏦 銀行帳戶</div>
-          <a href="#banks" class="btn btn-secondary btn-sm">管理銀行</a>
+          <div class="card-title"><i class="fa-solid fa-building-columns" style="color:#10B981;margin-right:6px;"></i>銀行帳戶</div>
+          <a href="#banks" class="btn btn-sm btn-ghost gap-1">管理銀行</a>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
           ${banks.map(b => {
@@ -105,7 +105,7 @@ const PageDashboard = (() => {
 
             return `
               <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px;">
-                <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:#1E293B;">🏦 ${b.name}</div>
+                <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:#1E293B;"><i class="fa-solid fa-building-columns" style="color:#10B981;font-size:13px;margin-right:4px;"></i>${b.name}</div>
                 <div style="font-size:22px;font-weight:700;color:#3B82F6;margin-bottom:6px;">${Utils.formatTWD(b.balance || 0)}</div>
                 ${cards.length > 0 ? `
                   <div style="font-size:11px;color:#64748B;border-top:1px solid #E2E8F0;padding-top:6px;margin-top:4px;">
@@ -131,8 +131,8 @@ const PageDashboard = (() => {
       ` : `
       <div class="card" style="margin-bottom:20px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div class="card-title">🏦 銀行帳戶</div>
-          <a href="#banks" class="btn btn-primary btn-sm">＋ 新增銀行</a>
+          <div class="card-title"><i class="fa-solid fa-building-columns" style="color:#10B981;margin-right:6px;"></i>銀行帳戶</div>
+          <a href="#banks" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus fa-xs"></i> 新增銀行</a>
         </div>
         <div class="empty-state" style="padding:24px 0 8px;"><div class="empty-state-text">尚未設定銀行帳戶</div></div>
       </div>
@@ -163,7 +163,7 @@ const PageDashboard = (() => {
           <div class="card" style="margin-bottom:16px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
               <div class="card-title">🇹🇼 台股</div>
-              <a href="#tw-stocks" class="btn btn-secondary btn-sm">查看詳情</a>
+              <a href="#tw-stocks" class="btn btn-sm btn-ghost gap-1">查看詳情</a>
             </div>
             <div class="grid-2" style="gap:12px;">
               <div>
@@ -187,7 +187,7 @@ const PageDashboard = (() => {
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
               <div class="card-title">🇺🇸 美股</div>
-              <a href="#us-stocks" class="btn btn-secondary btn-sm">查看詳情</a>
+              <a href="#us-stocks" class="btn btn-sm btn-ghost gap-1">查看詳情</a>
             </div>
             <div class="grid-2" style="gap:12px;">
               <div>
@@ -214,10 +214,10 @@ const PageDashboard = (() => {
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
             <div class="card-title">最近收支</div>
-            <a href="#transactions" class="btn btn-secondary btn-sm">查看全部</a>
+            <a href="#transactions" class="btn btn-sm btn-ghost gap-1">查看全部</a>
           </div>
           ${recentTx.length === 0
-            ? `<div class="empty-state"><div class="empty-state-icon">💳</div><div class="empty-state-text">尚無收支紀錄</div></div>`
+            ? `<div class="empty-state"><div class="empty-state-icon"><i class="fa-solid fa-credit-card" style="color:#6366F1;font-size:13px;"></i></div><div class="empty-state-text">尚無收支紀錄</div></div>`
             : `<div>
                 ${recentTx.map(t => `
                   <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #F3F4F6;">

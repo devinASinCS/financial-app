@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Subscriptions page — recurring subscription management
  */
 const PageSubscriptions = (() => {
@@ -10,7 +10,7 @@ const PageSubscriptions = (() => {
           <div class="page-title">🔄 訂閱管理</div>
           <div class="page-subtitle">管理每月訂閱服務，自動計入信用卡消費</div>
         </div>
-        <button class="btn btn-primary" onclick="PageSubscriptions.openAdd()">＋ 新增訂閱</button>
+        <button class="btn btn-primary" onclick="PageSubscriptions.openAdd()"><i class="fa-solid fa-plus fa-xs"></i> 新增訂閱</button>
       </div>
       <div id="sub-summary" style="margin-bottom:20px;"></div>
       <div id="sub-list"></div>
@@ -66,7 +66,7 @@ const PageSubscriptions = (() => {
           <div class="empty-state">
             <div class="empty-state-icon">🔄</div>
             <div class="empty-state-text">尚未新增任何訂閱服務</div>
-            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageSubscriptions.openAdd()">＋ 新增第一個訂閱</button>
+            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageSubscriptions.openAdd()"><i class="fa-solid fa-plus fa-xs"></i> 新增第一個訂閱</button>
           </div>
         </div>`;
       return;
@@ -182,12 +182,12 @@ const PageSubscriptions = (() => {
                     </label>
                   </td>
                   <td class="text-center">
-                    <button class="btn btn-secondary btn-sm" onclick="PageSubscriptions.openEdit('${s.id}')">編輯</button>
-                    <button class="btn btn-secondary btn-sm" style="margin-left:4px;color:#6366F1;"
+                    <button class="btn btn-sm btn-ghost gap-1" onclick="PageSubscriptions.openEdit('${s.id}')">編輯</button>
+                    <button class="btn btn-sm btn-ghost gap-1" style="margin-left:4px;color:#6366F1;"
                       onclick="PageSubscriptions.billNow('${s.id}')" title="立即計入本月帳單">
                       手動計入
                     </button>
-                    <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="PageSubscriptions.del('${s.id}')">刪除</button>
+                    <button class="btn btn-sm btn-ghost text-error gap-1" style="margin-left:4px;" onclick="PageSubscriptions.del('${s.id}')">刪除</button>
                   </td>
                 </tr>
               `;

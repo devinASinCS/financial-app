@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Modal — generic dialog component
  */
 const Modal = (() => {
@@ -41,21 +41,23 @@ const Modal = (() => {
       `<option value="${c}" ${t.category === c && t.type === 'income' ? 'selected' : ''}>${c}</option>`
     ).join('');
 
-    // Build bank options for payment method
     const banks = Store.getBanks();
+    // Bank options for bank_transfer
     const bankOptions = banks.map(b =>
       `<option value="${b.id}" ${t.bankId === b.id ? 'selected' : ''}>${b.name}</option>`
     ).join('');
 
-    // Build card options for currently selected bank
-    const selectedBank = banks.find(b => b.id === t.bankId);
-    const cardOptions = selectedBank
-      ? selectedBank.creditCards.map(c =>
-          `<option value="${c.id}" ${t.cardId === c.id ? 'selected' : ''}>${c.name}</option>`
-        ).join('')
-      : '';
+    // All credit cards across all banks (no bank pre-selection needed)
+    const allCreditCards = banks.flatMap(b =>
+      (b.creditCards || []).filter(c => !c.type || c.type === 'credit').map(c => ({ ...c, bankId: b.id, bankName: b.name }))
+    );
+    const allCardOptions = allCreditCards.map(c =>
+      `<option value="${c.id}" ${t.cardId === c.id ? 'selected' : ''}>${c.bankName} — ${c.name}</option>`
+    ).join('');
 
     const payMethod = t.paymentMethod || 'cash';
+    const hasBanks = banks.length > 0;
+    const hasCards = allCreditCards.length > 0;
 
     open(`
       <div class="modal-header">
@@ -68,11 +70,11 @@ const Modal = (() => {
           <div style="display:flex;gap:10px;">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
               <input type="radio" name="tx-type" value="expense" ${t.type === 'expense' ? 'checked' : ''} onchange="Modal._onTypeChange(this)">
-              <span style="color:#EF4444;font-weight:600;">💸 支出</span>
+              <span style="color:#EF4444;font-weight:600;"><i class="fa-solid fa-arrow-up" style="color:#EF4444;"></i> 支出</span>
             </label>
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
               <input type="radio" name="tx-type" value="income" ${t.type === 'income' ? 'checked' : ''} onchange="Modal._onTypeChange(this)">
-              <span style="color:#10B981;font-weight:600;">💰 收入</span>
+              <span style="color:#10B981;font-weight:600;"><i class="fa-solid fa-arrow-down" style="color:#10B981;"></i> 收入</span>
             </label>
           </div>
         </div>
@@ -124,32 +126,32 @@ const Modal = (() => {
           <div style="display:flex;gap:14px;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
               <input type="radio" name="tx-payment" value="cash" ${payMethod === 'cash' ? 'checked' : ''} onchange="Modal._onPaymentChange(this)">
-              <span>💵 現金</span>
+              <span><i class="fa-solid fa-money-bill-wave" style="font-size:12px;color:#6B7280;"></i> 現金</span>
             </label>
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
               <input type="radio" name="tx-payment" value="bank_transfer" ${payMethod === 'bank_transfer' ? 'checked' : ''} onchange="Modal._onPaymentChange(this)">
-              <span>🏦 銀行轉帳</span>
+              <span><i class="fa-solid fa-building-columns" style="font-size:12px;color:#6B7280;"></i> 銀行轉帳</span>
             </label>
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
               <input type="radio" name="tx-payment" value="credit_card" ${payMethod === 'credit_card' ? 'checked' : ''} onchange="Modal._onPaymentChange(this)">
-              <span>💳 信用卡</span>
+              <span><i class="fa-solid fa-credit-card" style="font-size:12px;color:#6B7280;"></i> 信用卡</span>
             </label>
           </div>
         </div>
 
-        <div id="payment-bank-group" class="form-group" style="display:${(payMethod === 'bank_transfer' || payMethod === 'credit_card') && banks.length > 0 ? '' : 'none'};">
-          <label class="form-label">${payMethod === 'credit_card' ? '信用卡所屬銀行' : '銀行'}</label>
-          <select id="tx-bank" class="form-select" onchange="Modal._onPaymentBankChange()">
+        <div id="payment-bank-group" class="form-group" style="display:${payMethod === 'bank_transfer' && hasBanks ? '' : 'none'};">
+          <label class="form-label">銀行</label>
+          <select id="tx-bank" class="form-select">
             <option value="">選擇銀行</option>
             ${bankOptions}
           </select>
         </div>
 
-        <div id="payment-card-group" class="form-group" style="display:${payMethod === 'credit_card' && cardOptions ? '' : 'none'};">
+        <div id="payment-card-group" class="form-group" style="display:${payMethod === 'credit_card' && hasCards ? '' : 'none'};">
           <label class="form-label">信用卡</label>
           <select id="tx-card" class="form-select">
             <option value="">選擇信用卡</option>
-            ${cardOptions}
+            ${allCardOptions}
           </select>
         </div>
 
@@ -175,7 +177,7 @@ const Modal = (() => {
         })()}
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
         <button class="btn btn-primary" onclick="Modal._saveTx(${isEdit ? `'${t.id}'` : 'null'})">
           ${isEdit ? '儲存' : '新增'}
         </button>
@@ -216,20 +218,26 @@ const Modal = (() => {
     const method = radio.value || document.querySelector('[name="tx-payment"]:checked')?.value;
     const bankGrp = document.getElementById('payment-bank-group');
     const cardGrp = document.getElementById('payment-card-group');
-    const bankLabel = bankGrp?.querySelector('label.form-label');
     const banks = Store.getBanks();
 
     if (!bankGrp || !cardGrp) return;
 
     if (method === 'bank_transfer') {
       bankGrp.style.display = banks.length > 0 ? '' : 'none';
-      if (bankLabel) bankLabel.textContent = '銀行';
       cardGrp.style.display = 'none';
     } else if (method === 'credit_card') {
-      bankGrp.style.display = banks.length > 0 ? '' : 'none';
-      if (bankLabel) bankLabel.textContent = '信用卡所屬銀行';
-      // Trigger card update
-      Modal._onPaymentBankChange();
+      bankGrp.style.display = 'none';
+      // Populate all credit cards across all banks
+      const allCards = banks.flatMap(b =>
+        (b.creditCards || []).filter(c => !c.type || c.type === 'credit').map(c => ({ ...c, bankId: b.id, bankName: b.name }))
+      );
+      const cardSel = document.getElementById('tx-card');
+      if (cardSel && !cardSel.dataset.populated) {
+        cardSel.innerHTML = `<option value="">選擇信用卡</option>` +
+          allCards.map(c => `<option value="${c.id}">${c.bankName} — ${c.name}</option>`).join('');
+        cardSel.dataset.populated = '1';
+      }
+      cardGrp.style.display = allCards.length > 0 ? '' : 'none';
     } else {
       bankGrp.style.display = 'none';
       cardGrp.style.display = 'none';
@@ -310,10 +318,15 @@ const Modal = (() => {
     let paymentMethod = null, bankId = null, cardId = null;
     if (type === 'expense') {
       paymentMethod = document.querySelector('[name="tx-payment"]:checked')?.value || 'cash';
-      bankId = document.getElementById('tx-bank')?.value || null;
-      cardId = document.getElementById('tx-card')?.value || null;
-      if (paymentMethod === 'cash') { bankId = null; cardId = null; }
-      if (paymentMethod === 'bank_transfer') { cardId = null; }
+      if (paymentMethod === 'bank_transfer') {
+        bankId = document.getElementById('tx-bank')?.value || null;
+      } else if (paymentMethod === 'credit_card') {
+        cardId = document.getElementById('tx-card')?.value || null;
+        if (cardId) {
+          const ownerBank = Store.getBanks().find(b => (b.creditCards || []).some(c => c.id === cardId));
+          bankId = ownerBank?.id || null;
+        }
+      }
     }
 
     const eventId = document.getElementById('tx-event')?.value || null;
@@ -398,7 +411,7 @@ const Modal = (() => {
         <div id="trade-total-preview" style="background:#F0FDF4;padding:10px 14px;border-radius:8px;font-size:13px;color:#065F46;"></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
         <button class="btn btn-primary" onclick="Modal._saveTrade('${market}', ${isEdit ? `'${t.id}'` : 'null'})">
           ${isEdit ? '儲存' : '新增'}
         </button>
@@ -554,7 +567,7 @@ const Modal = (() => {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
         <button class="btn btn-primary" onclick="Modal._saveDiv('${market}', ${isEdit ? `'${d.id}'` : 'null'})">
           ${isEdit ? '儲存' : '新增並計入'}
         </button>
@@ -643,7 +656,7 @@ const Modal = (() => {
         <textarea id="import-text" class="import-area" placeholder="貼上對帳單內容..."></textarea>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
         <button class="btn btn-primary" onclick="Modal._doImport('${market}')">解析並匯入</button>
       </div>
     `, onImport);
@@ -676,7 +689,7 @@ const Modal = (() => {
       <select class="form-input" style="width:90px;flex-shrink:0;" data-wallet-currency>${opts}</select>
       <input type="number" class="form-input" style="flex:1;" placeholder="0" step="0.01" data-wallet-balance value="${w.balance || 0}">
       <button type="button" onclick="this.closest('.wallet-row').remove()"
-        style="background:none;border:none;color:#dc2626;font-size:18px;cursor:pointer;line-height:1;padding:0 4px;">✕</button>
+        class="btn btn-xs btn-ghost text-error"><i class="fa-solid fa-xmark"></i></button>
     </div>`;
   }
 
@@ -704,11 +717,11 @@ const Modal = (() => {
           <label class="form-label" style="margin-bottom:6px;">帳戶幣別與餘額</label>
           <div id="bank-wallets">${walletRows}</div>
           <button type="button" onclick="Modal._addBankWallet()"
-            class="btn btn-secondary btn-sm" style="margin-top:4px;">＋ 新增外幣帳戶</button>
+            class="btn btn-sm btn-ghost gap-1" style="margin-top:4px;"><i class="fa-solid fa-plus fa-xs"></i> 新增外幣帳戶</button>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
         <button class="btn btn-primary" onclick="Modal._saveBank(${isEdit ? `'${b.id}'` : 'null'})">
           ${isEdit ? '儲存' : '新增'}
         </button>
@@ -755,7 +768,7 @@ const Modal = (() => {
           <div style="display:flex;gap:16px;">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
               <input type="radio" name="card-type" value="credit" ${!isDebit ? 'checked' : ''} onchange="Modal._onCardTypeChange()">
-              <span>💳 信用卡</span>
+              <span><i class="fa-solid fa-credit-card" style="font-size:12px;color:#6B7280;"></i> 信用卡</span>
             </label>
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
               <input type="radio" name="card-type" value="debit" ${isDebit ? 'checked' : ''} onchange="Modal._onCardTypeChange()">
@@ -787,7 +800,7 @@ const Modal = (() => {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
         <button class="btn btn-primary" onclick="Modal._saveCreditCard('${bankId}', ${isEdit ? `'${c.id}'` : 'null'})">
           ${isEdit ? '儲存' : '新增'}
         </button>
@@ -887,7 +900,7 @@ const Modal = (() => {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
         <button class="btn btn-primary" onclick="Modal._saveSubscription(${isEdit ? `'${s.id}'` : 'null'})">
           ${isEdit ? '儲存' : '新增'}
         </button>
@@ -1014,7 +1027,7 @@ const Modal = (() => {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
         <button class="btn btn-primary" onclick="Modal._saveDcaPlan('${market}', ${isEdit ? `'${p.id}'` : 'null'})">
           ${isEdit ? '儲存' : '新增'}
         </button>
@@ -1156,7 +1169,7 @@ const Modal = (() => {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
         <button class="btn btn-primary" onclick="Modal._saveEvent(${isEdit ? `'${e.id}'` : 'null'})">
           ${isEdit ? '儲存' : '建立活動'}
         </button>
@@ -1219,8 +1232,8 @@ const Modal = (() => {
         ${rows}
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal._resetExchangeRates()">恢復預設</button>
-        <button class="btn btn-secondary" style="margin-left:auto;" onclick="Modal.close()">取消</button>
+        <button class="btn btn-ghost gap-2" onclick="Modal._resetExchangeRates()"><i class="fa-solid fa-rotate-left fa-xs"></i> 恢復預設</button>
+        <button class="btn btn-ghost" style="margin-left:auto;" onclick="Modal.close()">取消</button>
         <button class="btn btn-primary" onclick="Modal._saveExchangeRates()">儲存</button>
       </div>
     `);
@@ -1279,7 +1292,7 @@ const Modal = (() => {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
         <button class="btn btn-primary" onclick="Modal._executeDca('${plan.id}')">確認執行</button>
       </div>
     `, onSave);

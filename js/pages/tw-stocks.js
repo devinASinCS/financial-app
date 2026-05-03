@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Taiwan Stocks page
  */
 const PageTWStocks = (() => {
@@ -13,7 +13,7 @@ const PageTWStocks = (() => {
     document.getElementById('app-content').innerHTML = `
       <div class="page-header">
         <div>
-          <div class="page-title">🇹🇼 台股投資組合</div>
+          <div class="page-title"><i class="fa-solid fa-chart-line" style="color:#EF4444;margin-right:8px;font-size:18px;"></i>台股投資組合</div>
           <div class="page-subtitle">台灣上市、上櫃股票</div>
         </div>
         <div style="display:flex;gap:8px;" id="tw-action-btns"></div>
@@ -37,13 +37,13 @@ const PageTWStocks = (() => {
 
       <!-- Tabs -->
       <div class="tab-bar">
-        <button class="tab-btn ${_activeTab==='holdings'?'active':''}" onclick="PageTWStocks.switchTab('holdings')">📋 持股</button>
-        <button class="tab-btn ${_activeTab==='trades'?'active':''}" onclick="PageTWStocks.switchTab('trades')">🔄 交易</button>
-        <button class="tab-btn ${_activeTab==='dividends'?'active':''}" onclick="PageTWStocks.switchTab('dividends')">💵 除權息</button>
+        <button class="tab-btn ${_activeTab==='holdings'?'active':''}" onclick="PageTWStocks.switchTab('holdings')">持股</button>
+        <button class="tab-btn ${_activeTab==='trades'?'active':''}" onclick="PageTWStocks.switchTab('trades')">交易</button>
+        <button class="tab-btn ${_activeTab==='dividends'?'active':''}" onclick="PageTWStocks.switchTab('dividends')">除權息</button>
         <button class="tab-btn ${_activeTab==='dca'?'active':''}" onclick="PageTWStocks.switchTab('dca')">
-          📅 定額${pendingDca.length > 0 ? ` <span style="background:#EF4444;color:white;border-radius:10px;padding:1px 6px;font-size:10px;">${pendingDca.length}</span>` : ''}
+          定額${pendingDca.length > 0 ? ` <span style="background:#EF4444;color:white;border-radius:10px;padding:1px 6px;font-size:10px;">${pendingDca.length}</span>` : ''}
         </button>
-        <button class="tab-btn ${_activeTab==='pnl'?'active':''}" onclick="PageTWStocks.switchTab('pnl')">📈 損益</button>
+        <button class="tab-btn ${_activeTab==='pnl'?'active':''}" onclick="PageTWStocks.switchTab('pnl')">損益</button>
       </div>
 
       <div id="tw-tab-content"></div>
@@ -121,11 +121,11 @@ const PageTWStocks = (() => {
   function _renderActionBtns() {
     const btns = {
       holdings:  `<button class="btn btn-secondary" onclick="PageTWStocks.openImport()">📥 匯入</button>
-                  <button class="btn btn-primary" onclick="PageTWStocks.openAddTrade()">＋ 新增交易</button>`,
+                  <button class="btn btn-primary" onclick="PageTWStocks.openAddTrade()"><i class="fa-solid fa-plus fa-xs"></i> 新增交易</button>`,
       trades:    `<button class="btn btn-secondary" onclick="PageTWStocks.openImport()">📥 匯入</button>
-                  <button class="btn btn-primary" onclick="PageTWStocks.openAddTrade()">＋ 新增交易</button>`,
-      dividends: `<button class="btn btn-primary" onclick="PageTWStocks.openAddDividend()">＋ 新增除權息</button>`,
-      dca:       `<button class="btn btn-primary" onclick="PageTWStocks.openAddDca()">＋ 新增定期定額</button>`,
+                  <button class="btn btn-primary" onclick="PageTWStocks.openAddTrade()"><i class="fa-solid fa-plus fa-xs"></i> 新增交易</button>`,
+      dividends: `<button class="btn btn-primary" onclick="PageTWStocks.openAddDividend()"><i class="fa-solid fa-plus fa-xs"></i> 新增除權息</button>`,
+      dca:       `<button class="btn btn-primary" onclick="PageTWStocks.openAddDca()"><i class="fa-solid fa-plus fa-xs"></i> 新增定期定額</button>`,
       pnl:       '',
     };
     document.getElementById('tw-action-btns').innerHTML = btns[_activeTab] || '';
@@ -223,8 +223,8 @@ const PageTWStocks = (() => {
           </div>
           <div style="font-size:13px;font-weight:700;color:${t.action === 'buy' ? '#ef4444' : '#10b981'};flex-shrink:0;">${t.action === 'buy' ? '-' : '+'}${Utils.formatTWD(net)}</div>
           <div style="display:flex;gap:2px;flex-shrink:0;">
-            <button onclick="event.stopPropagation();PageTWStocks.openEditTrade('${t.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">✏️</button>
-            <button onclick="event.stopPropagation();PageTWStocks.delTrade('${t.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">🗑️</button>
+            <button onclick="event.stopPropagation();PageTWStocks.openEditTrade('${t.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-pen fa-xs"></i></button>
+            <button onclick="event.stopPropagation();PageTWStocks.delTrade('${t.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-trash fa-xs"></i></button>
           </div>
         </div>`;
       }).join('');
@@ -262,8 +262,8 @@ const PageTWStocks = (() => {
           </div>
           <div style="display:flex;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid #f1f5f9;">
             <button class="btn btn-primary btn-sm" onclick="PageTWStocks.openAddTrade('${h.symbol}','${h.name}')">＋ 交易</button>
-            <button class="btn btn-secondary btn-sm" style="color:#8b5cf6;" onclick="PageTWStocks.openAddDividendFor('${h.symbol}')">除權息</button>
-            <button id="tw-holding-arrow-${h.symbol}" class="btn btn-secondary btn-sm" style="margin-left:auto;"
+            <button class="btn btn-sm btn-ghost gap-1" style="color:#8b5cf6;" onclick="PageTWStocks.openAddDividendFor('${h.symbol}')">除權息</button>
+            <button id="tw-holding-arrow-${h.symbol}" class="btn btn-sm btn-ghost gap-1" style="margin-left:auto;"
               onclick="PageTWStocks.toggleHoldingTrades('${h.symbol}')">▼ 明細</button>
           </div>
           <div id="tw-holding-trades-${h.symbol}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;">
@@ -286,7 +286,7 @@ const PageTWStocks = (() => {
       ${upcomingAlert}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
         ${lastUpdateStr ? `<span style="font-size:11px;color:#9ca3af;">更新：${lastUpdateStr}</span>` : '<span></span>'}
-        <button class="btn btn-secondary btn-sm" id="tw-refresh-btn"
+        <button class="btn btn-sm btn-ghost gap-1" id="tw-refresh-btn"
           onclick="PageTWStocks.refreshPrices()" ${_fetchingPrices ? 'disabled' : ''}>
           ${_fetchingPrices ? '更新中…' : '🔄 更新報價'}
         </button>
@@ -344,8 +344,8 @@ const PageTWStocks = (() => {
                   ${t.tax ? `<div><span style="color:#94a3b8;">交易稅</span> ${Utils.formatTWD(t.tax)}</div>` : ''}
                 </div>
                 <div style="display:flex;gap:8px;">
-                  <button class="btn btn-secondary btn-sm" onclick="PageTWStocks.openEditTrade('${t.id}')">✏️ 編輯</button>
-                  <button class="btn btn-danger btn-sm" onclick="PageTWStocks.delTrade('${t.id}')">🗑️ 刪除</button>
+                  <button class="btn btn-sm btn-ghost gap-1" onclick="PageTWStocks.openEditTrade('${t.id}')"><i class="fa-solid fa-pen fa-xs"></i> 編輯</button>
+                  <button class="btn btn-sm btn-ghost text-error gap-1" onclick="PageTWStocks.delTrade('${t.id}')"><i class="fa-solid fa-trash fa-xs"></i> 刪除</button>
                 </div>
               </div>
             </div>`;
@@ -364,7 +364,7 @@ const PageTWStocks = (() => {
           <div class="empty-state">
             <div class="empty-state-icon">💵</div>
             <div class="empty-state-text">尚無除權息紀錄</div>
-            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageTWStocks.openAddDividend()">＋ 新增除權息</button>
+            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageTWStocks.openAddDividend()"><i class="fa-solid fa-plus fa-xs"></i> 新增除權息</button>
           </div>
         </div>`;
       return;
@@ -402,8 +402,8 @@ const PageTWStocks = (() => {
               ${d.stockShares > 0 ? '<div style="font-size:11px;color:#3b82f6;">+' + d.stockShares + '股</div>' : ''}
             </div>
             <div style="display:flex;gap:2px;flex-shrink:0;">
-              <button onclick="event.stopPropagation();PageTWStocks.openEditDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">✏️</button>
-              <button onclick="event.stopPropagation();PageTWStocks.delDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;">🗑️</button>
+              <button onclick="event.stopPropagation();PageTWStocks.openEditDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-pen fa-xs"></i></button>
+              <button onclick="event.stopPropagation();PageTWStocks.delDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-trash fa-xs"></i></button>
             </div>
           </div>`).join('');
 
@@ -424,7 +424,7 @@ const PageTWStocks = (() => {
             </div>
             <div id="div-detail-${g.symbol}" style="display:none;padding:0 16px 12px;">
               <div style="display:flex;justify-content:flex-end;padding-top:8px;padding-bottom:4px;">
-                <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();PageTWStocks.openAddDividendFor('${g.symbol}')">＋ 新增</button>
+                <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();PageTWStocks.openAddDividendFor('${g.symbol}')"><i class="fa-solid fa-plus fa-xs"></i> 新增</button>
               </div>
               ${detailRows}
             </div>
@@ -449,7 +449,7 @@ const PageTWStocks = (() => {
             <p style="font-size:13px;color:#6B7280;max-width:360px;text-align:center;margin:8px auto 0;">
               設定後，系統會在每月執行日提醒你，並根據你輸入的成交價格自動計算張數。
             </p>
-            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageTWStocks.openAddDca()">＋ 新增定期定額</button>
+            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageTWStocks.openAddDca()"><i class="fa-solid fa-plus fa-xs"></i> 新增定期定額</button>
           </div>
         </div>`;
       return;
@@ -500,8 +500,8 @@ const PageTWStocks = (() => {
                   </td>
                   <td class="text-center">
                     ${isDue ? `<button class="btn btn-primary btn-sm" onclick="PageTWStocks.executeDca('${p.id}')" style="margin-right:4px;">執行</button>` : ''}
-                    <button class="btn btn-secondary btn-sm" onclick="PageTWStocks.openEditDca('${p.id}')">編輯</button>
-                    <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="PageTWStocks.delDca('${p.id}')">刪除</button>
+                    <button class="btn btn-sm btn-ghost gap-1" onclick="PageTWStocks.openEditDca('${p.id}')">編輯</button>
+                    <button class="btn btn-sm btn-ghost text-error gap-1" style="margin-left:4px;" onclick="PageTWStocks.delDca('${p.id}')">刪除</button>
                   </td>
                 </tr>`;
             }).join('')}

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Settings page — Export/Import JSON + Notion Sync
  */
 const PageSettings = (() => {
@@ -69,7 +69,7 @@ const PageSettings = (() => {
   function toggleAutoSync(enabled) {
     NotionSync.setAutoSync(enabled);
     render();
-    if (enabled) Utils.showToast('✅ 自動同步已開啟');
+    if (enabled) Utils.showToast('自動同步已開啟');
     else Utils.showToast('自動同步已關閉');
   }
 
@@ -89,9 +89,9 @@ const PageSettings = (() => {
     if (btn) { btn.textContent = '測試中…'; btn.disabled = true; }
     try {
       await NotionSync.ping();
-      Utils.showToast('✅ 連線成功！Worker 運作正常');
+      Utils.showToast('連線成功！Worker 運作正常');
     } catch (e) {
-      Utils.showToast(`❌ 連線失敗：${e.message}`);
+      Utils.showToast(`連線失敗：${e.message}`);
     } finally {
       if (btn) { btn.textContent = '測試連線'; btn.disabled = false; }
     }
@@ -103,12 +103,12 @@ const PageSettings = (() => {
     if (btn) { btn.textContent = '上傳中…'; btn.disabled = true; }
     try {
       await NotionSync.save();
-      Utils.showToast('✅ 資料已上傳至 Notion');
+      Utils.showToast('資料已上傳至 Notion');
       render();
     } catch (e) {
-      Utils.showToast(`❌ 上傳失敗：${e.message}`);
+      Utils.showToast(`上傳失敗：${e.message}`);
     } finally {
-      if (btn) { btn.textContent = '⬆ 上傳到 Notion'; btn.disabled = false; }
+      if (btn) { btn.textContent = '<i class="fa-solid fa-upload fa-xs"></i> 上傳到 Notion'; btn.disabled = false; }
     }
   }
 
@@ -119,12 +119,12 @@ const PageSettings = (() => {
     if (btn) { btn.textContent = '載入中…'; btn.disabled = true; }
     try {
       const result = await NotionSync.load();
-      Utils.showToast(`✅ 載入成功！共 ${result.counts.transactions} 筆收支`);
+      Utils.showToast(`載入成功！共 ${result.counts.transactions} 筆收支`);
       render();
     } catch (e) {
-      Utils.showToast(`❌ 載入失敗：${e.message}`);
+      Utils.showToast(`載入失敗：${e.message}`);
     } finally {
-      if (btn) { btn.textContent = '⬇ 從 Notion 載入'; btn.disabled = false; }
+      if (btn) { btn.textContent = '<i class="fa-solid fa-download fa-xs"></i> 從 Notion 載入'; btn.disabled = false; }
     }
   }
 
@@ -143,7 +143,7 @@ const PageSettings = (() => {
     return `
       <div style="margin-top:14px;">
         <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">
-          📋 最近自動匯入（共 ${txs.length} 筆）
+          <i class="fa-solid fa-clipboard-list" style="color:#6B7280;"></i> 最近自動匯入（共 ${txs.length} 筆）
         </div>
         <div style="overflow-x:auto;">
           <table class="data-table" style="font-size:12px;">
@@ -211,7 +211,7 @@ const PageSettings = (() => {
         if (trades.length === 0) errors += `<p style="color:#d97706;font-size:12px;">⚠️ ${item.fileName}：解析出 0 筆（格式不符或密碼錯誤）</p>`;
       } catch (e) {
         const isPwd = e.name === 'PasswordException' || /password/i.test(e.message);
-        errors += `<p style="color:#dc2626;font-size:12px;">❌ ${item.fileName}：${isPwd ? '密碼錯誤' : e.message}</p>`;
+        errors += `<p style="color:#dc2626;font-size:12px;">${item.fileName}：${isPwd ? '密碼錯誤' : e.message}</p>`;
       }
     }
     if (container) _renderStockParsedTrades(container, errors);
@@ -278,7 +278,7 @@ const PageSettings = (() => {
     const divCount   = selected.filter(t => t.action === 'dividend').length;
     const tradeCount = selected.length - divCount;
     const msg = [tradeCount > 0 && `${tradeCount} 筆交易`, divCount > 0 && `${divCount} 筆股利`].filter(Boolean).join('、');
-    Utils.showToast(`✅ 已匯入 ${msg}`);
+    Utils.showToast(`已匯入 ${msg}`);
     PageSettings.render();
   }
 
@@ -537,7 +537,7 @@ const PageSettings = (() => {
 
     document.getElementById('app-content').innerHTML = `
       <div class="page-header">
-        <h2 class="page-title">⚙️ 設定</h2>
+        <h2 class="page-title"><i class="fa-solid fa-gear" style="color:#6B7280;margin-right:8px;font-size:18px;"></i>設定</h2>
       </div>
 
       <!-- ── Data Summary ── -->
@@ -563,8 +563,8 @@ const PageSettings = (() => {
           將所有資料匯出為 JSON 檔案，或從備份檔還原。
         </p>
         <div style="display:flex;gap:12px;flex-wrap:wrap;">
-          <button class="btn btn-primary" onclick="PageSettings.exportJSON()">⬇️ 匯出 JSON 備份</button>
-          <button class="btn btn-secondary" onclick="PageSettings.triggerImport()">⬆️ 匯入 JSON 備份</button>
+          <button class="btn btn-primary" onclick="PageSettings.exportJSON()"><i class="fa-solid fa-download fa-xs"></i> 匯出 JSON 備份</button>
+          <button class="btn btn-secondary" onclick="PageSettings.triggerImport()"><i class="fa-solid fa-upload fa-xs"></i> 匯入 JSON 備份</button>
         </div>
         <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-top:14px;">
           <p style="font-size:13px;color:#0369a1;margin:0;">
@@ -629,10 +629,10 @@ const PageSettings = (() => {
             🔌 測試連線
           </button>
           <button id="btn-notion-save" class="btn btn-primary" onclick="PageSettings.notionSave()" ${configured ? '' : 'disabled'}>
-            ⬆ 上傳到 Notion
+            <i class="fa-solid fa-upload fa-xs"></i> 上傳到 Notion
           </button>
           <button id="btn-notion-load" class="btn btn-secondary" onclick="PageSettings.notionLoad()" ${configured ? '' : 'disabled'}>
-            ⬇ 從 Notion 載入
+            <i class="fa-solid fa-download fa-xs"></i> 從 Notion 載入
           </button>
         </div>
 
@@ -658,7 +658,7 @@ const PageSettings = (() => {
         </p>
 
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px;">
-          <div style="font-weight:600;color:#1e293b;margin-bottom:12px;font-size:14px;">⚙️ 設定步驟</div>
+          <div style="font-weight:600;color:#1e293b;margin-bottom:12px;font-size:14px;"><i class="fa-solid fa-gear" style="color:#6B7280;margin-right:8px;font-size:18px;"></i>設定步驟</div>
           <ol style="font-size:13px;color:#374151;line-height:2;margin:0;padding-left:20px;">
             <li>前往 <a href="https://script.google.com" target="_blank" style="color:#2563eb;">script.google.com</a> → 建立新專案</li>
             <li>將專案根目錄的 <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px;">gas-email-importer.gs</code> 全部內容貼入</li>
@@ -671,7 +671,7 @@ const PageSettings = (() => {
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
           <div style="background:#eff6ff;border-radius:8px;padding:12px;">
-            <div style="font-size:12px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">✅ 支援銀行</div>
+            <div style="font-size:12px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">支援銀行</div>
             <div style="font-size:12px;color:#1e40af;line-height:1.8;">
               國泰世華・玉山銀行<br>
               中信銀行・台新銀行<br>
@@ -713,7 +713,7 @@ const PageSettings = (() => {
         </p>
 
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px;">
-          <div style="font-weight:600;color:#1e293b;margin-bottom:12px;font-size:14px;">⚙️ 設定步驟</div>
+          <div style="font-weight:600;color:#1e293b;margin-bottom:12px;font-size:14px;"><i class="fa-solid fa-gear" style="color:#6B7280;margin-right:8px;font-size:18px;"></i>設定步驟</div>
           <ol style="font-size:13px;color:#374151;line-height:2;margin:0;padding-left:20px;">
             <li>將 <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px;">gas-email-importer.gs</code> 貼入 Google Apps Script（已包含對帳單函式）</li>
             <li>執行一次 <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px;">setupStockTrigger()</code> 安裝每日觸發器</li>
@@ -725,7 +725,7 @@ const PageSettings = (() => {
 
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
           <button class="btn btn-secondary" onclick="PageSettings.fetchStockPdfQueue()">
-            🔄 取得待處理對帳單
+            <i class="fa-solid fa-rotate"></i> 取得待處理對帳單
           </button>
           <span id="stock-pdf-status" style="font-size:13px;color:#6b7280;">點擊按鈕從 Worker 取得佇列</span>
         </div>
@@ -748,7 +748,7 @@ const PageSettings = (() => {
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
           <div style="background:#eff6ff;border-radius:8px;padding:12px;">
-            <div style="font-size:12px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">✅ 支援券商（通用格式）</div>
+            <div style="font-size:12px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">支援券商（通用格式）</div>
             <div style="font-size:12px;color:#1e40af;line-height:1.8;">
               元大・富邦・永豐金・凱基<br>國泰・第一金・群益（及其他）
             </div>
@@ -772,7 +772,7 @@ const PageSettings = (() => {
         <p style="font-size:14px;color:#6b7280;margin:8px 0 16px;">
           以下操作會永久刪除資料，執行前請先下載備份。
         </p>
-        <button class="btn btn-danger" onclick="PageSettings.clearAllData()">🗑️ 清除所有資料</button>
+        <button class="btn btn-error" onclick="PageSettings.clearAllData()"><i class="fa-solid fa-trash fa-xs"></i> 清除所有資料</button>
       </div>
     `;
   }

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Transactions page — mobile-first with activity calendar
  * Tabs: 當日 | 圖表 | 全部 | 活動 | 銀行 | 訂閱
  */
@@ -254,7 +254,7 @@ const PageTransactions = (() => {
             <div style="font-size:14px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.name}</div>
             ${e.startDate ? `<div style="font-size:11px;color:#94a3b8;">${Utils.formatDate(e.startDate)}${e.endDate ? ' – ' + Utils.formatDate(e.endDate) : ''}</div>` : ''}
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="PageTransactions.openEditEvent('${e.id}')">編輯</button>
+          <button class="btn btn-sm btn-ghost gap-1" onclick="PageTransactions.openEditEvent('${e.id}')">編輯</button>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 12px;">
           <div style="text-align:center;padding:6px;background:#fef2f2;border-radius:8px;">
@@ -267,7 +267,7 @@ const PageTransactions = (() => {
           </div>
         </div>
         <div style="padding:0 12px 8px;">
-          <button class="btn btn-primary" style="width:100%;font-size:13px;" onclick="PageTransactions.openAddEventTx()">+ 新增記帳</button>
+          <button class="btn btn-primary" style="width:100%;font-size:13px;" onclick="PageTransactions.openAddEventTx()"><i class="fa-solid fa-plus fa-xs"></i> 新增記帳</button>
         </div>
       </div>`;
   }
@@ -308,9 +308,9 @@ const PageTransactions = (() => {
           </div>
           <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:3px;">
             <span onclick="PageTransactions.openEdit('${t.id}')"
-              style="font-size:13px;cursor:pointer;color:#94a3b8;">✏️</span>
+              style="font-size:13px;cursor:pointer;color:#94a3b8;"><i class="fa-solid fa-pen fa-xs"></i></span>
             <span onclick="PageTransactions.del('${t.id}')"
-              style="font-size:13px;cursor:pointer;color:#94a3b8;">🗑️</span>
+              style="font-size:13px;cursor:pointer;color:#94a3b8;"><i class="fa-solid fa-trash fa-xs"></i></span>
           </div>
         </div>
       </div>`).join('');
@@ -460,8 +460,8 @@ const PageTransactions = (() => {
             ${t.type === 'income' ? '+' : '-'}${Utils.formatTWD(t.amount)}
           </div>
           <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
-            <span onclick="PageTransactions.openEdit('${t.id}')" style="cursor:pointer;font-size:12px;color:#cbd5e1;">✏️</span>
-            <span onclick="PageTransactions.del('${t.id}')" style="cursor:pointer;font-size:12px;color:#cbd5e1;">🗑️</span>
+            <span onclick="PageTransactions.openEdit('${t.id}')" style="cursor:pointer;font-size:12px;color:#cbd5e1;"><i class="fa-solid fa-pen fa-xs"></i></span>
+            <span onclick="PageTransactions.del('${t.id}')" style="cursor:pointer;font-size:12px;color:#cbd5e1;"><i class="fa-solid fa-trash fa-xs"></i></span>
           </div>
         </div>`).join('');
 
@@ -489,7 +489,7 @@ const PageTransactions = (() => {
 
     const addBtn = `
       <div style="padding:10px 14px;background:white;border-bottom:1px solid #f1f5f9;">
-        <button class="btn btn-primary" style="width:100%;" onclick="PageTransactions.openAddEvent()">＋ 新增活動</button>
+        <button class="btn btn-primary" style="width:100%;" onclick="PageTransactions.openAddEvent()"><i class="fa-solid fa-plus fa-xs"></i> 新增活動</button>
       </div>`;
 
     if (events.length === 0) {
@@ -526,8 +526,8 @@ const PageTransactions = (() => {
           </div>
           <div style="display:flex;gap:6px;justify-content:flex-end;">
             <button class="btn btn-primary btn-sm" onclick="PageTransactions.viewEvent('${e.id}')">查看明細</button>
-            <button class="btn btn-secondary btn-sm" onclick="PageTransactions.openEditEvent('${e.id}')">編輯</button>
-            <button class="btn btn-danger btn-sm" onclick="PageTransactions.deleteEvent('${e.id}')">刪除</button>
+            <button class="btn btn-sm btn-ghost gap-1" onclick="PageTransactions.openEditEvent('${e.id}')">編輯</button>
+            <button class="btn btn-sm btn-ghost text-error gap-1" onclick="PageTransactions.deleteEvent('${e.id}')">刪除</button>
           </div>
         </div>`;
     }).join('');
@@ -561,8 +561,8 @@ const PageTransactions = (() => {
             ${t.type === 'income' ? '+' : '-'}${Utils.formatTWD(t.amount)}
           </div>
           <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:3px;">
-            <span onclick="PageTransactions.openEditEventTx('${t.id}')" style="cursor:pointer;font-size:12px;color:#94a3b8;">✏️</span>
-            <span onclick="PageTransactions.deleteEventTx('${t.id}')" style="cursor:pointer;font-size:12px;color:#94a3b8;">🗑️</span>
+            <span onclick="PageTransactions.openEditEventTx('${t.id}')" style="cursor:pointer;font-size:12px;color:#94a3b8;"><i class="fa-solid fa-pen fa-xs"></i></span>
+            <span onclick="PageTransactions.deleteEventTx('${t.id}')" style="cursor:pointer;font-size:12px;color:#94a3b8;"><i class="fa-solid fa-trash fa-xs"></i></span>
           </div>
         </div>
       </div>`).join('') + `</div>`;
@@ -577,7 +577,7 @@ const PageTransactions = (() => {
 
     const addBtn = `
       <div style="padding:10px 14px;background:white;border-bottom:1px solid #f1f5f9;">
-        <button class="btn btn-primary" style="width:100%;" onclick="PageTransactions.openAddBank()">＋ 新增銀行</button>
+        <button class="btn btn-primary" style="width:100%;" onclick="PageTransactions.openAddBank()"><i class="fa-solid fa-plus fa-xs"></i> 新增銀行</button>
       </div>`;
 
     if (banks.length === 0) {
@@ -592,12 +592,12 @@ const PageTransactions = (() => {
 
       const cardsHtml = cards.length === 0
         ? `<div style="margin-top:6px;">
-            <button class="btn btn-secondary btn-sm" onclick="PageTransactions.openAddCard('${bank.id}','${bank.name}')">+ 新增信用卡</button>
+            <button class="btn btn-sm btn-ghost gap-1" onclick="PageTransactions.openAddCard('${bank.id}','${bank.name}')"><i class="fa-solid fa-plus fa-xs"></i> 新增信用卡</button>
           </div>`
         : `<div style="border-top:1px solid #f1f5f9;margin-top:10px;padding-top:10px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
               <span style="font-size:12px;font-weight:600;color:#475569;">信用卡</span>
-              <button class="btn btn-secondary btn-sm" onclick="PageTransactions.openAddCard('${bank.id}','${bank.name}')">+ 新增</button>
+              <button class="btn btn-sm btn-ghost gap-1" onclick="PageTransactions.openAddCard('${bank.id}','${bank.name}')"><i class="fa-solid fa-plus fa-xs"></i> 新增</button>
             </div>
             ${cards.map(card => {
               const isDebit = card.type === 'debit';
@@ -608,8 +608,8 @@ const PageTransactions = (() => {
                     <div style="font-size:11px;color:#64748b;">簽帳金融卡</div>
                   </div>
                   <div style="display:flex;gap:5px;">
-                    <button class="btn btn-secondary btn-sm" onclick="PageTransactions.openEditCard('${bank.id}','${card.id}')">編輯</button>
-                    <button class="btn btn-danger btn-sm" onclick="PageTransactions.deleteCard('${bank.id}','${card.id}')">刪除</button>
+                    <button class="btn btn-sm btn-ghost gap-1" onclick="PageTransactions.openEditCard('${bank.id}','${card.id}')">編輯</button>
+                    <button class="btn btn-sm btn-ghost text-error gap-1" onclick="PageTransactions.deleteCard('${bank.id}','${card.id}')">刪除</button>
                   </div>
                 </div>`;
               }
@@ -626,8 +626,8 @@ const PageTransactions = (() => {
                     ${card.limit > 0 ? `<div style="font-size:11px;color:#64748b;">額度 ${Utils.formatTWD(card.limit)}</div>` : ''}
                   </div>
                   <div style="display:flex;gap:5px;">
-                    <button class="btn btn-secondary btn-sm" onclick="PageTransactions.openEditCard('${bank.id}','${card.id}')">編輯</button>
-                    <button class="btn btn-danger btn-sm" onclick="PageTransactions.deleteCard('${bank.id}','${card.id}')">刪除</button>
+                    <button class="btn btn-sm btn-ghost gap-1" onclick="PageTransactions.openEditCard('${bank.id}','${card.id}')">編輯</button>
+                    <button class="btn btn-sm btn-ghost text-error gap-1" onclick="PageTransactions.deleteCard('${bank.id}','${card.id}')">刪除</button>
                   </div>
                 </div>
                 ${card.limit > 0 ? `
@@ -646,16 +646,23 @@ const PageTransactions = (() => {
         <div style="background:white;border-bottom:1px solid #f1f5f9;padding:12px 14px;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
             <div>
-              <div style="font-size:15px;font-weight:700;color:#1e293b;">🏦 ${bank.name}</div>
-              <div style="display:flex;align-items:center;gap:8px;margin-top:3px;">
-                <span style="font-size:20px;font-weight:800;color:#3b82f6;">${Utils.formatTWD(bank.balance || 0)}</span>
-                <button onclick="PageTransactions.adjustBalance('${bank.id}')"
-                  style="font-size:11px;color:#6366f1;background:none;border:1px solid #c7d2fe;border-radius:5px;padding:2px 8px;cursor:pointer;">調整</button>
-              </div>
+              <div style="font-size:15px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;"><i class="fa-solid fa-building-columns" style="color:#10B981;font-size:14px;"></i>${bank.name}</div>
+              <div style="margin-top:4px;">${(() => {
+                const _ws = bank.wallets || [{ currency: bank.currency || 'TWD', balance: bank.balance || 0 }];
+                const _twd = _ws.find(w => w.currency === 'TWD');
+                const _rest = _ws.filter(w => w.currency !== (_twd ? 'TWD' : _ws[0].currency));
+                const _primary = _twd || _ws[0];
+                if (!_primary) return '';
+                const _fmt = w => w.currency === 'TWD' ? Utils.formatTWD(w.balance||0) : w.currency === 'USD' ? Utils.formatUSD(w.balance||0) : ((w.balance||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+' '+w.currency);
+                const _adj = cur => `<button class="btn btn-xs btn-ghost" style="color:#6366f1;min-height:unset;height:20px;padding:0 5px;" onclick="PageTransactions.adjustBalance('${bank.id}','${cur}')"><i class="fa-solid fa-pen-to-square" style="font-size:10px;"></i></button>`;
+                let _h = `<div style="display:flex;align-items:center;gap:4px;"><span style="font-size:20px;font-weight:800;color:#3b82f6;">${_fmt(_primary)}</span>${_adj(_primary.currency)}</div>`;
+                _rest.forEach(w => { _h += `<div style="display:flex;align-items:center;gap:5px;margin-top:2px;"><span style="font-size:13px;font-weight:700;color:#64748b;">${_fmt(w)}</span><span style="font-size:10px;color:#94a3b8;background:#f1f5f9;border-radius:3px;padding:1px 4px;">${w.currency}</span>${_adj(w.currency)}</div>`; });
+                return _h;
+              })()}</div>
             </div>
             <div style="display:flex;gap:5px;flex-shrink:0;">
-              <button class="btn btn-secondary btn-sm" onclick="PageTransactions.openEditBank('${bank.id}')">編輯</button>
-              <button class="btn btn-danger btn-sm" onclick="PageTransactions.deleteBank('${bank.id}')">刪除</button>
+              <button class="btn btn-sm btn-ghost gap-1" onclick="PageTransactions.openEditBank('${bank.id}')">編輯</button>
+              <button class="btn btn-sm btn-ghost text-error gap-1" onclick="PageTransactions.deleteBank('${bank.id}')">刪除</button>
             </div>
           </div>
           ${cardsHtml}
@@ -711,7 +718,7 @@ const PageTransactions = (() => {
 
     const addBtn = `
       <div style="padding:10px 14px;background:white;border-bottom:1px solid #f1f5f9;">
-        <button class="btn btn-primary" style="width:100%;" onclick="PageTransactions.openAddSub()">＋ 新增訂閱</button>
+        <button class="btn btn-primary" style="width:100%;" onclick="PageTransactions.openAddSub()"><i class="fa-solid fa-plus fa-xs"></i> 新增訂閱</button>
       </div>`;
 
     if (subs.length === 0) {
@@ -744,8 +751,8 @@ const PageTransactions = (() => {
                 <input type="checkbox" ${s.active ? 'checked' : ''} style="cursor:pointer;width:15px;height:15px;"
                   onchange="PageTransactions.toggleSubActive('${s.id}', this.checked)">
               </label>
-              <button class="btn btn-secondary btn-sm" onclick="PageTransactions.openEditSub('${s.id}')">編輯</button>
-              <button class="btn btn-danger btn-sm" onclick="PageTransactions.deleteSub('${s.id}')">刪除</button>
+              <button class="btn btn-sm btn-ghost gap-1" onclick="PageTransactions.openEditSub('${s.id}')">編輯</button>
+              <button class="btn btn-sm btn-ghost text-error gap-1" onclick="PageTransactions.deleteSub('${s.id}')">刪除</button>
             </div>
           </div>
         </div>`;
@@ -876,34 +883,42 @@ const PageTransactions = (() => {
     _refresh();
   }
 
-  function adjustBalance(bankId) {
+  function adjustBalance(bankId, currency) {
     const bank = Store.getBanks().find(b => b.id === bankId);
     if (!bank) return;
+    const wallets  = bank.wallets || [{ currency: bank.currency || 'TWD', balance: bank.balance || 0 }];
+    const cur      = currency || (wallets.find(w => w.currency === 'TWD') || wallets[0])?.currency || 'TWD';
+    const wallet   = wallets.find(w => w.currency === cur) || wallets[0];
+    const curLabel = wallet.currency;
     Modal.open(`
       <div class="modal-header">
-        <span class="modal-title">調整餘額 — ${bank.name}</span>
+        <span class="modal-title"><i class="fa-solid fa-pen-to-square" style="margin-right:6px;color:#6366F1;"></i>調整餘額 — ${bank.name}</span>
         <button class="modal-close" onclick="Modal.close()">✕</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label class="form-label">帳戶餘額 (NT$)</label>
-          <input type="number" id="adj-balance" class="form-input" value="${bank.balance || 0}" step="1">
+          <label class="form-label">帳戶餘額 (${curLabel})</label>
+          <input type="number" id="adj-balance" class="form-input" value="${wallet.balance || 0}" step="${curLabel === 'TWD' ? '1' : '0.01'}">
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">取消</button>
-        <button class="btn btn-primary" onclick="PageTransactions._saveAdjBalance('${bankId}')">儲存</button>
+        <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
+        <button class="btn btn-primary gap-2" onclick="PageTransactions._saveAdjBalance('${bankId}','${curLabel}')"><i class="fa-solid fa-floppy-disk fa-xs"></i> 儲存</button>
       </div>
     `, () => _refresh());
   }
 
-  function _saveAdjBalance(bankId) {
-    const balance = parseFloat(document.getElementById('adj-balance').value || 0);
-    Store.updateBank(bankId, { balance });
+  function _saveAdjBalance(bankId, currency) {
+    const balance  = parseFloat(document.getElementById('adj-balance').value || 0);
+    const bank     = Store.getBanks().find(b => b.id === bankId);
+    if (!bank) return;
+    const cur      = currency || 'TWD';
+    const wallets  = bank.wallets || [{ currency: bank.currency || 'TWD', balance: bank.balance || 0 }];
+    const updated  = wallets.map(w => w.currency === cur ? { ...w, balance } : w);
+    Store.updateBank(bankId, { wallets: updated });
     Utils.showToast('已更新');
     Modal.close();
   }
-
   // ── Subscriptions actions ─────────────────────────────────────────
   function openAddSub() { Modal.openSubscription(null, () => _refresh()); }
 

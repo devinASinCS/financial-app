@@ -306,8 +306,10 @@ body {
 }
 
 /* ── Buttons ──────────────────────────────────────────────────────── */
-/* DaisyUI handles: .btn .btn-primary .btn-secondary .btn-success .btn-sm */
-.btn { font-family: inherit; }
+/* DaisyUI handles: .btn .btn-primary .btn-secondary .btn-success .btn-error .btn-ghost .btn-sm */
+.btn { font-family: inherit; letter-spacing: -0.01em; }
+.btn-primary { font-weight: 600; }
+.btn i, .btn svg { pointer-events: none; }
 .btn-danger {
   background-color: #EF4444;
   color: white;

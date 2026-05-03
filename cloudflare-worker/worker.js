@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cashio Cloudflare Worker — sync proxy + stock data
  *
  * Environment variables (Cloudflare dashboard → Settings → Variables):
@@ -131,22 +131,34 @@ export default {
         const data = raw ? JSON.parse(raw) : {};
         if (!Array.isArray(data.transactions)) data.transactions = [];
 
+        // Build bankName → {bankId, cardId} lookup from stored bank data
+        const bankNameMap = {};
+        for (const bank of (Array.isArray(data.banks) ? data.banks : [])) {
+          const creditCards = (bank.creditCards || []).filter(c => !c.type || c.type === 'credit');
+          if (creditCards.length > 0) {
+            bankNameMap[bank.name] = { bankId: bank.id, cardId: creditCards[0].id };
+          }
+        }
+
         const newTxs = txList
           .filter(tx => tx && typeof tx.amount === 'number' && tx.date)
-          .map(tx => ({
-            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-            date:          tx.date,
-            type:          'expense',
-            amount:        tx.amount,
-            category:      tx.category || '其他',
-            note:          tx.note     || '',
-            source:        'email_import',
-            paymentMethod: 'credit_card',
-            bankId:        tx.bankId   || null,
-            cardId:        tx.cardId   || null,
-            eventId:       null,
-            foreignAmount: null, foreignCurrency: null, exchangeRate: null,
-          }));
+          .map(tx => {
+            const resolved = (tx.bankName && bankNameMap[tx.bankName]) || {};
+            return {
+              id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+              date:          tx.date,
+              type:          'expense',
+              amount:        tx.amount,
+              category:      tx.category || '其他',
+              note:          tx.note     || '',
+              source:        'email_import',
+              paymentMethod: 'credit_card',
+              bankId:        tx.bankId   || resolved.bankId  || null,
+              cardId:        tx.cardId   || resolved.cardId  || null,
+              eventId:       null,
+              foreignAmount: null, foreignCurrency: null, exchangeRate: null,
+            };
+          });
 
         data.transactions.push(...newTxs);
         data._savedAt = new Date().toISOString();

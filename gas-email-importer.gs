@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cashio Email Auto-Importer
  * ==========================
  * 自動從 Gmail 信用卡消費通知郵件匯入交易到 Cashio。
@@ -37,17 +37,17 @@ var CONFIG = {
 
   // 特店關鍵字 → 支出分類對應表
   categoryMap: {
-    '7-ELEVEN|全家|FamilyMart|萊爾富|OK便利|超商':         '日常購物',
+    '7-ELEVEN|全家|FamilyMart|萊爾富|OK便利|超商':         '購物',
     '麥當勞|McDonald|KFC|肯德基|摩斯|漢堡王|Burger King':  '餐飲',
     '星巴克|Starbucks|路易莎|Louisa|cama|咖啡|飲料':       '餐飲',
     '餐廳|飯店|食堂|小吃|火鍋|燒肉|牛排|拉麵|壽司|便當':  '餐飲',
-    '誠品|博客來|momo|蝦皮|Shopee|PChome|Yahoo購物|蔦屋':  '網路購物',
+    '誠品|博客來|momo|蝦皮|Shopee|PChome|Yahoo購物|蔦屋':  '購物',
     '中油|台塑|加油|油站|CPC':                             '交通',
     '捷運|MRT|高鐵|THSR|台鐵|TRA|公車|Uber|計程車':       '交通',
-    'Apple|Google Play|App Store|Netflix|Spotify|YouTube': '訂閱服務',
-    '藥局|藥妝|屈臣氏|Watsons|康是美|Cosmed':              '醫療保健',
-    '全聯|家樂福|Carrefour|大潤發|COSTCO|好市多|愛買':     '超市賣場',
-    '電費|水費|瓦斯|電信|中華電信|台哥大|遠傳|台電':       '帳單費用',
+    'Apple|Google Play|App Store|Netflix|Spotify|YouTube': '訂閱',
+    '藥局|藥妝|屈臣氏|Watsons|康是美|Cosmed':              '醫療',
+    '全聯|家樂福|Carrefour|大潤發|COSTCO|好市多|愛買':     '購物',
+    '電費|水費|瓦斯|電信|中華電信|台哥大|遠傳|台電':       '水電費',
   },
 };
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,7 +240,7 @@ var BANK_PARSERS = [
           /交易時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i,
           /(\d{4}\/\d{2}\/\d{2})/,      // 表格格式：正卡 2026/04/27 17:23 TW
         ],
-      });
+      }, this.name);
     },
   },
 
@@ -258,7 +258,7 @@ var BANK_PARSERS = [
         amountRe:   [/消費金額\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
         merchantRe: [/消費商店\s+(.+)/i, /特店名稱\s+(.+)/i, /消費店家\s+(.+)/i],
         dateRe:     [/消費時間\s+(\d{4}\/\d{2}\/\d{2})/i, /交易日期\s+(\d{4}\/\d{2}\/\d{2})/i],
-      });
+      }, this.name);
     },
   },
 
@@ -277,7 +277,7 @@ var BANK_PARSERS = [
         merchantRe: [/消費地點[：:]\s*(.+)/i, /特店[：:]\s*(.+)/i, /商店[：:]\s*(.+)/i],
         dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /(\d{2}\/\d{2})/],
         inferYear:  true,
-      }, msgDate);
+      }, this.name);
     },
   },
 
@@ -295,7 +295,7 @@ var BANK_PARSERS = [
         amountRe:   [/消費金額[：:]\s*NTD?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i, /NTD\s*([\d,]+)/i],
         merchantRe: [/消費商店[：:]\s*(.+)/i, /交易商店[：:]\s*(.+)/i],
         dateRe:     [/交易時間[：:]\s*(\d{4}-\d{2}-\d{2})/i, /(\d{4}\/\d{2}\/\d{2})/i, /(\d{4}-\d{2}-\d{2})/i],
-      });
+      }, this.name);
     },
   },
 
@@ -313,7 +313,7 @@ var BANK_PARSERS = [
         amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
         merchantRe: [/消費商店[：:]\s*(.+)/i, /消費地點[：:]\s*(.+)/i],
         dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i],
-      });
+      }, this.name);
     },
   },
 
@@ -331,7 +331,7 @@ var BANK_PARSERS = [
         amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
         merchantRe: [/消費商店[：:]\s*(.+)/i, /商店名稱[：:]\s*(.+)/i],
         dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i],
-      });
+      }, this.name);
     },
   },
 
@@ -349,7 +349,7 @@ var BANK_PARSERS = [
         amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
         merchantRe: [/消費商店[：:]\s*(.+)/i],
         dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i],
-      });
+      }, this.name);
     },
   },
 
@@ -367,7 +367,7 @@ var BANK_PARSERS = [
         amountRe:   [/NT\$\s*([\d,]+)/i, /消費金額\s*([\d,]+)/i, /付款金額\s*([\d,]+)/i],
         merchantRe: [/消費店家[：:]\s*(.+)/i, /付款至[：:]\s*(.+)/i, /交易商店[：:]\s*(.+)/i],
         dateRe:     [/交易時間[：:]\s*(\d{4}[-\/]\d{2}[-\/]\d{2})/i, /(\d{4}-\d{2}-\d{2})/i],
-      });
+      }, this.name);
     },
   },
 
@@ -416,7 +416,7 @@ function parseGeneric(body, subject, msgDate) {
  * @param {Object}   opts    - { amountRe, merchantRe, dateRe, inferYear }
  * @returns {Object[]} Transaction 陣列
  */
-function parseBlocks(blocks, msgDate, opts) {
+function parseBlocks(blocks, msgDate, opts, bankName) {
   var results = [];
   var fallbackDate = toDateStr(msgDate);
 
@@ -438,7 +438,7 @@ function parseBlocks(blocks, msgDate, opts) {
       date = rawDate;
     }
 
-    results.push(buildTx(amount, merchant, date));
+    results.push(buildTx(amount, merchant, date, bankName));
   }
 
   return results;
@@ -506,7 +506,7 @@ function mapCategory(merchant) {
   return CONFIG.defaultCategory;
 }
 
-function buildTx(amount, merchant, date) {
+function buildTx(amount, merchant, date, bankName) {
   return {
     date:          date,
     type:          'expense',
@@ -515,6 +515,7 @@ function buildTx(amount, merchant, date) {
     note:          merchant ? merchant.slice(0, 60) : '',
     source:        'email_import',
     paymentMethod: 'credit_card',
+    bankName:      bankName || null,
   };
 }
 
