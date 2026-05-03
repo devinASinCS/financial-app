@@ -91,11 +91,10 @@ const PageDashboard = (() => {
           <div class="card-title"><i class="fa-solid fa-building-columns" style="color:#10B981;margin-right:6px;"></i>銀行帳戶</div>
           <a href="#banks" class="btn btn-sm btn-ghost gap-1">管理銀行</a>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
+        <div style="display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding-bottom:6px;scrollbar-width:none;-ms-overflow-style:none;">
           ${banks.map(b => {
             const cards = b.creditCards || [];
-            const totalLimit = cards.reduce((s, c) => s + (c.limit || 0), 0);
-            // Current month credit card spending for this bank
+            const totalLimit = cards.filter(c => !c.type || c.type === 'credit').reduce((s, c) => s + (c.limit || 0), 0);
             const monthCCSpend = Store.getTransactions().filter(t =>
               t.type === 'expense' &&
               t.paymentMethod === 'credit_card' &&
@@ -103,17 +102,25 @@ const PageDashboard = (() => {
               t.date.startsWith(prefix)
             ).reduce((s, t) => s + t.amount, 0);
 
+            const wallets = b.wallets || [{ currency: b.currency || 'TWD', balance: b.balance || 0 }];
+            const twdWallet = wallets.find(w => w.currency === 'TWD');
+            const otherWallets = wallets.filter(w => w.currency !== 'TWD' && (w.balance || 0) !== 0);
+            const twdBalance = twdWallet ? twdWallet.balance || 0 : 0;
+
             return `
-              <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px;">
-                <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:#1E293B;"><i class="fa-solid fa-building-columns" style="color:#10B981;font-size:13px;margin-right:4px;"></i>${b.name}</div>
-                <div style="font-size:22px;font-weight:700;color:#3B82F6;margin-bottom:6px;">${Utils.formatTWD(b.balance || 0)}</div>
+              <div style="flex-shrink:0;width:200px;scroll-snap-align:start;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px;">
+                <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:#1E293B;display:flex;align-items:center;gap:4px;"><i class="fa-solid fa-building-columns" style="color:#10B981;font-size:13px;"></i>${b.name}</div>
+                <div style="font-size:22px;font-weight:700;color:#3B82F6;margin-bottom:2px;">${Utils.formatTWD(twdBalance)}</div>
+                ${otherWallets.map(w => `
+                  <div style="font-size:12px;font-weight:600;color:#64748B;">
+                    ${w.balance.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} ${w.currency}
+                  </div>`).join('')}
                 ${cards.length > 0 ? `
-                  <div style="font-size:11px;color:#64748B;border-top:1px solid #E2E8F0;padding-top:6px;margin-top:4px;">
-                    ${cards.length} 張信用卡
-                    ${totalLimit > 0 ? ` · 總額度 ${Utils.formatTWD(totalLimit)}` : ''}
-                    ${monthCCSpend > 0 ? `<br><span style="color:#EF4444;">本月消費 ${Utils.formatTWD(monthCCSpend)}</span>` : ''}
+                  <div style="font-size:11px;color:#64748B;border-top:1px solid #E2E8F0;padding-top:6px;margin-top:6px;">
+                    ${cards.length} 張卡${totalLimit > 0 ? ` · 額度 ${Utils.formatTWD(totalLimit)}` : ''}
+                    ${monthCCSpend > 0 ? `<br><span style="color:#EF4444;">本月 ${Utils.formatTWD(monthCCSpend)}</span>` : ''}
                   </div>
-                ` : `<div style="font-size:11px;color:#94A3B8;">無信用卡</div>`}
+                ` : `<div style="font-size:11px;color:#94A3B8;margin-top:6px;">無信用卡</div>`}
               </div>
             `;
           }).join('')}
