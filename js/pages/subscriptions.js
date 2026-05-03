@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Subscriptions page — recurring subscription management
  */
 const PageSubscriptions = (() => {

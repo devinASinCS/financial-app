@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Events page — group transactions by activity (trip, wedding, etc.)
  *
  * Two views:

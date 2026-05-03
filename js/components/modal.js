@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Modal — generic dialog component
  */
 const Modal = (() => {

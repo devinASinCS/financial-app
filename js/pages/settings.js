@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Settings page — Export/Import JSON + Notion Sync
  */
 const PageSettings = (() => {

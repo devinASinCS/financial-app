@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Transactions page — mobile-first with activity calendar
  * Tabs: 當日 | 圖表 | 全部 | 活動 | 銀行 | 訂閱
  */

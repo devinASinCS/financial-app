@@ -1,4 +1,4 @@
-﻿/**
+/**
  * US Stocks page — mirrors TW Stocks but in USD
  */
 const PageUSStocks = (() => {

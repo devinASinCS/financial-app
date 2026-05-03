@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Taiwan Stocks page
  */
 const PageTWStocks = (() => {

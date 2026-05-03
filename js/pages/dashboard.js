@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Dashboard page — overview of finances
  */
 const PageDashboard = (() => {
