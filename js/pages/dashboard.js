@@ -34,7 +34,13 @@ const PageDashboard = (() => {
 
     // Banks
     const banks = Store.getBanks();
-    const totalBankBalance = banks.reduce((s, b) => s + (b.balance || 0), 0);
+    const totalBankBalance = banks.reduce((s, b) => {
+      const wallets = b.wallets || [{ currency: b.currency || 'TWD', balance: b.balance || 0 }];
+      return s + wallets.reduce((ws, w) => {
+        const rate = w.currency === 'TWD' ? 1 : Store.getExchangeRate(w.currency);
+        return ws + (w.balance || 0) * rate;
+      }, 0);
+    }, 0);
 
     // Recent transactions
     const recentTx = Store.getTransactions().slice(0, 8);

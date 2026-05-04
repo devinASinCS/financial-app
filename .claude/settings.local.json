@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\devin\\\\Desktop\\\\claude project\\\\financial-app\" -Recurse -Force)",
+      "Bash(Select-Object FullName)",
+      "mcp__plugin_claude-mem_mcp-search__smart_outline"
+    ]
+  }
+}
