@@ -28,10 +28,11 @@ const Modal = (() => {
   function openTransaction(existing = null, onSave) {
     // `existing` may be a partial preset (no id) when opening from an event page
     const isEdit = !!(existing && existing.id);
-    const t = existing || {
+    const t = isEdit ? existing : {
       date: Utils.today(), type: 'expense', amount: '',
       category: Store.EXPENSE_CATEGORIES[0], note: '', source: 'manual',
       paymentMethod: 'cash', bankId: null, cardId: null, eventId: null,
+      ...existing,
     };
 
     const expCats = Store.EXPENSE_CATEGORIES.map(c =>
