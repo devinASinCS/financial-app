@@ -47,12 +47,12 @@ const Modal = (() => {
       `<option value="${b.id}" ${t.bankId === b.id ? 'selected' : ''}>${b.name}</option>`
     ).join('');
 
-    // All credit cards across all banks (no bank pre-selection needed)
+    // All credit/debit cards across all banks
     const allCreditCards = banks.flatMap(b =>
-      (b.creditCards || []).filter(c => !c.type || c.type === 'credit').map(c => ({ ...c, bankId: b.id, bankName: b.name }))
+      (b.creditCards || []).map(c => ({ ...c, bankId: b.id, bankName: b.name }))
     );
     const allCardOptions = allCreditCards.map(c =>
-      `<option value="${c.id}" ${t.cardId === c.id ? 'selected' : ''}>${c.bankName} — ${c.name}</option>`
+      `<option value="${c.id}" ${t.cardId === c.id ? 'selected' : ''}>${c.bankName} — ${c.name}${c.type === 'debit' ? ' (簽帳)' : ''}</option>`
     ).join('');
 
     const payMethod = t.paymentMethod || 'cash';
@@ -148,9 +148,9 @@ const Modal = (() => {
         </div>
 
         <div id="payment-card-group" class="form-group" style="display:${payMethod === 'credit_card' && hasCards ? '' : 'none'};">
-          <label class="form-label">信用卡</label>
+          <label class="form-label">信用／簽帳卡</label>
           <select id="tx-card" class="form-select">
-            <option value="">選擇信用卡</option>
+            <option value="">選擇卡片</option>
             ${allCardOptions}
           </select>
         </div>
@@ -227,14 +227,16 @@ const Modal = (() => {
       cardGrp.style.display = 'none';
     } else if (method === 'credit_card') {
       bankGrp.style.display = 'none';
-      // Populate all credit cards across all banks
+      // Populate all credit/debit cards across all banks
       const allCards = banks.flatMap(b =>
-        (b.creditCards || []).filter(c => !c.type || c.type === 'credit').map(c => ({ ...c, bankId: b.id, bankName: b.name }))
+        (b.creditCards || []).map(c => ({ ...c, bankId: b.id, bankName: b.name }))
       );
       const cardSel = document.getElementById('tx-card');
       if (cardSel && !cardSel.dataset.populated) {
-        cardSel.innerHTML = `<option value="">選擇信用卡</option>` +
-          allCards.map(c => `<option value="${c.id}">${c.bankName} — ${c.name}</option>`).join('');
+        const prevVal = cardSel.value;
+        cardSel.innerHTML = `<option value="">選擇卡片</option>` +
+          allCards.map(c => `<option value="${c.id}">${c.bankName} — ${c.name}${c.type === 'debit' ? ' (簽帳)' : ''}</option>`).join('');
+        if (prevVal) cardSel.value = prevVal;
         cardSel.dataset.populated = '1';
       }
       cardGrp.style.display = allCards.length > 0 ? '' : 'none';
