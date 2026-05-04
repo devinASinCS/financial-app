@@ -1141,10 +1141,19 @@ const Modal = (() => {
               placeholder="例：日本旅遊、婚禮籌備" value="${e.name}">
           </div>
           <div class="form-group" style="flex:1;">
-            <label class="form-label">圖示（Emoji）</label>
-            <input type="text" id="ev-icon" class="form-input"
-              placeholder="📋" value="${e.icon || '📋'}"
-              style="font-size:22px;text-align:center;" maxlength="2">
+            <label class="form-label">圖示</label>
+            <input type="hidden" id="ev-icon" value="${e.icon || '📋'}">
+            <div id="ev-icon-display" style="font-size:28px;text-align:center;line-height:1;padding:6px 0;">${e.icon || '📋'}</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">圖示選擇</label>
+          <div id="ev-emoji-grid" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
+            ${['📋','✈️','🚂','🚢','🏖️','🗺️','🗼','🎉','🎂','💍','👶','🎓','🏠','🚗','🛋️','🔧','📦','🏥','💊','🏋️','🍽️','🍜','☕','💼','📊','💻','📱','💰','💳','📈','🏦','⭐','🎯','📅','🛒','🎮','🎵','🌱','🐾','❤️'].map(em => `
+              <button type="button"
+                onclick="Modal._pickEventIcon('${em}')"
+                style="font-size:20px;width:38px;height:38px;border-radius:8px;border:2px solid ${(e.icon||'📋')===em?'#6366F1':'transparent'};background:${(e.icon||'📋')===em?'#EEF2FF':'transparent'};cursor:pointer;transition:border-color .15s,background .15s;"
+                data-emoji="${em}">${em}</button>`).join('')}
           </div>
         </div>
         <div class="form-group">
@@ -1175,6 +1184,16 @@ const Modal = (() => {
         </button>
       </div>
     `, onSave);
+  }
+
+  function _pickEventIcon(emoji) {
+    document.getElementById('ev-icon').value = emoji;
+    document.getElementById('ev-icon-display').textContent = emoji;
+    document.querySelectorAll('#ev-emoji-grid button[data-emoji]').forEach(btn => {
+      const sel = btn.dataset.emoji === emoji;
+      btn.style.borderColor = sel ? '#6366F1' : 'transparent';
+      btn.style.background  = sel ? '#EEF2FF' : 'transparent';
+    });
   }
 
   function _onEventColorChange(color) {
@@ -1368,6 +1387,6 @@ const Modal = (() => {
     openSubscription, _onSubBankChange, _saveSubscription,
     openDcaPlan, _onDcaSymbolInput, _onDcaBankChange, _saveDcaPlan,
     openDcaExecute, _calcDcaShares, _executeDca,
-    openEvent, _onEventColorChange, _saveEvent,
+    openEvent, _onEventColorChange, _pickEventIcon, _saveEvent,
   };
 })();
