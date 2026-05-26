@@ -516,7 +516,7 @@ function getCookie(req, name) {
   return m?.[1] ?? null;
 }
 function sessionCookie(val, maxAge) {
-  return `session=${val}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}; Path=/`;
+  return `session=${val}; HttpOnly; Secure; SameSite=None; Max-Age=${maxAge}; Path=/`;
 }
 
 // ── Stock price fetching (unchanged from v1) ───────────────────────────────
