@@ -23,6 +23,9 @@ const FM_KEYS = [
   'fm_subscriptions', 'fm_events', 'fm_settings',
 ];
 
+const GMAIL_SEARCH = 'subject:(消費通知 OR 刷卡通知 OR 消費提醒 OR 信用卡消費 OR 消費明細 OR 消費彙整) newer_than:3d';
+const GMAIL_API    = 'https://gmail.googleapis.com/gmail/v1/users/me';
+
 // ── Entry point ────────────────────────────────────────────────────────────
 export default {
   async fetch(req, env) {
@@ -85,6 +88,10 @@ export default {
     } catch (e) {
       return json({ ok: false, error: e.message }, 500);
     }
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runEmailImport(env));
   },
 };
 
@@ -517,6 +524,421 @@ function getCookie(req, name) {
 }
 function sessionCookie(val, maxAge) {
   return `session=${val}; HttpOnly; Secure; SameSite=None; Max-Age=${maxAge}; Path=/`;
+}
+
+// ── Scheduled email import ─────────────────────────────────────────────────
+async function runEmailImport(env) {
+  const users = await env.DB.prepare(
+    'SELECT id, refresh_token FROM users WHERE refresh_token IS NOT NULL'
+  ).all();
+  for (const user of users.results) {
+    try { await processUserEmails(user, env); } catch (e) { /* skip failed user */ }
+  }
+}
+
+async function processUserEmails(user, env) {
+  const accessToken = await getGmailAccessToken(user.refresh_token, env);
+  if (!accessToken) return;
+
+  const row = await env.DB.prepare(
+    "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'email_processed_ids'"
+  ).bind(user.id).first();
+  const processedIds = new Set(row ? JSON.parse(row.value) : []);
+
+  const messages = await searchGmailMessages(accessToken, GMAIL_SEARCH);
+  const allTxs   = [];
+  const newIds   = [];
+
+  for (const { id: msgId } of messages) {
+    if (processedIds.has(msgId)) continue;
+    newIds.push(msgId);
+    try {
+      const msg = await getGmailMessage(accessToken, msgId);
+      allTxs.push(...parseGmailMessage(msg));
+    } catch { /* skip unparseable message */ }
+  }
+
+  if (newIds.length) {
+    const allIds = [...processedIds, ...newIds].slice(-1000);
+    await env.DB.prepare(`
+      INSERT INTO user_data (user_id, key, value, updated_at) VALUES (?1, 'email_processed_ids', ?2, ?3)
+      ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `).bind(user.id, JSON.stringify(allIds), nowSec()).run();
+  }
+
+  if (!allTxs.length) return;
+
+  const banksRow = await env.DB.prepare(
+    "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'fm_banks'"
+  ).bind(user.id).first();
+  const banks  = banksRow ? JSON.parse(banksRow.value) : [];
+  const bankMap = {};
+  for (const bank of banks) {
+    const cc = (bank.creditCards || []).find(c => !c.type || c.type === 'credit');
+    if (cc) bankMap[bank.name] = { bankId: bank.id, cardId: cc.id };
+  }
+
+  const ts     = nowSec().toString(36);
+  const txList = allTxs.map((tx, i) => {
+    const resolved = (tx.bankName && bankMap[tx.bankName]) || {};
+    return {
+      id:            ts + i.toString(36) + Math.random().toString(36).slice(2, 6),
+      date:          tx.date,
+      type:          'expense',
+      amount:        tx.amount,
+      category:      tx.category,
+      note:          tx.note,
+      source:        'email_import',
+      paymentMethod: 'credit_card',
+      bankId:        resolved.bankId  || null,
+      cardId:        resolved.cardId  || null,
+      eventId:       null,
+      foreignAmount: null, foreignCurrency: null, exchangeRate: null,
+    };
+  });
+  await _mergeTx(user.id, txList, env);
+}
+
+async function getGmailAccessToken(encryptedRefreshToken, env) {
+  const refreshToken = await aesDecrypt(encryptedRefreshToken, env.ENCRYPTION_KEY);
+  const res  = await fetch(GOOGLE_TOKEN, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id:     env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      refresh_token: refreshToken,
+      grant_type:    'refresh_token',
+    }),
+  });
+  const data = await res.json();
+  return data.access_token || null;
+}
+
+async function searchGmailMessages(accessToken, query) {
+  const url = `${GMAIL_API}/messages?q=${encodeURIComponent(query)}&maxResults=50`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.messages || [];
+}
+
+async function getGmailMessage(accessToken, msgId) {
+  const res = await fetch(`${GMAIL_API}/messages/${msgId}?format=full`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(`Gmail API ${res.status}`);
+  return res.json();
+}
+
+function extractPlainBody(payload) {
+  if (!payload) return '';
+  if (payload.mimeType === 'text/plain' && payload.body?.data) {
+    return _decodeBase64url(payload.body.data);
+  }
+  for (const part of (payload.parts || [])) {
+    const text = extractPlainBody(part);
+    if (text) return text;
+  }
+  return '';
+}
+
+function _decodeBase64url(str) {
+  const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
+  const bytes  = Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+function parseGmailMessage(msg) {
+  const headers = msg.payload?.headers || [];
+  const from    = (headers.find(h => h.name === 'From')?.value || '').toLowerCase();
+  const subject = headers.find(h => h.name === 'Subject')?.value || '';
+  const body    = extractPlainBody(msg.payload);
+  const date    = new Date(parseInt(msg.internalDate));
+
+  for (const parser of EMAIL_BANK_PARSERS) {
+    if (parser.senderMatch(from) || parser.subjectMatch(subject)) {
+      const results = parser.parse(body, subject, date);
+      if (results.length > 0) return results;
+    }
+  }
+  return emailParseGeneric(body, subject, date);
+}
+
+// ── Email category maps ─────────────────────────────────────────────────────
+const EMAIL_CATEGORY_MAP = {
+  '7-ELEVEN|全家|FamilyMart|萊爾富|OK便利|超商':         '購物',
+  '麥當勞|McDonald|KFC|肯德基|摩斯|漢堡王|Burger King':  '餐飲',
+  '星巴克|Starbucks|路易莎|Louisa|cama|咖啡|飲料':       '餐飲',
+  '餐廳|飯店|食堂|小吃|火鍋|燒肉|牛排|拉麵|壽司|便當':  '餐飲',
+  '誠品|博客來|momo|蝦皮|Shopee|PChome|Yahoo購物|蔦屋':  '購物',
+  '中油|台塑|加油|油站|CPC':                             '交通',
+  '捷運|MRT|高鐵|THSR|台鐵|TRA|公車|Uber|計程車':       '交通',
+  'Apple|Google Play|App Store|Netflix|Spotify|YouTube': '訂閱',
+  '藥局|藥妝|屈臣氏|Watsons|康是美|Cosmed':              '醫療',
+  '全聯|家樂福|Carrefour|大潤發|COSTCO|好市多|愛買':     '購物',
+  '電費|水費|瓦斯|電信|中華電信|台哥大|遠傳|台電':       '水電費',
+};
+
+const EMAIL_CATEGORY_HINT_MAP = {
+  '餐廳|餐飲|飲食|美食|外食|Food':               '餐飲',
+  '購物|零售|網購|百貨|超市|超商|量販|Retail':    '購物',
+  '交通|運輸|加油|停車|Transport':               '交通',
+  '醫療|藥局|診所|醫院|健康|Health':             '醫療',
+  '娛樂|休閒|電影|KTV|遊戲|Entertainment':       '娛樂',
+  '訂閱|訂購|線上服務|串流|Subscription':         '訂閱',
+  '水電|公用|繳費|電信|Utility':                 '水電費',
+  '旅遊|住宿|飯店|機票|Travel':                  '旅遊住宿',
+};
+
+// ── Bank parsers (ported from gas-email-importer.gs) ───────────────────────
+const EMAIL_BANK_PARSERS = [
+  {
+    name: '國泰世華',
+    senderMatch:  f => /cathaylife|cathaybk|cathayunited|cathay-united/i.test(f),
+    subjectMatch: s => /國泰|Cathay/i.test(s) && /消費|刷卡/i.test(s),
+    parse(body, subject, date) {
+      const blocks = emailSmartSplit(body,
+        ['卡別[\\s　]+行動卡號', '消費時間[：:]', '交易時間[：:]'],
+        ['NT\\$\\s*[\\d,]+']
+      );
+      return emailParseBlocks(blocks, date, {
+        amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
+        merchantRe: [/消費特店[：:]\s*(.+)/i, /消費商店[：:]\s*(.+)/i, /消費地點[：:]\s*(.+)/i, /NT\$[\d,]+\s+([^\n\r]+)/i],
+        dateRe:     [/消費時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /消費時間[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /交易時間[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /(\d{4}\/\d{2}\/\d{2})/, /(\d{3}\/\d{2}\/\d{2})/],
+      }, this.name);
+    },
+  },
+  {
+    name: '玉山銀行',
+    senderMatch:  f => /esunbank|e\.sun|esun\.com/i.test(f),
+    subjectMatch: s => /玉山/i.test(s) && /消費|刷卡/i.test(s),
+    parse(body, subject, date) {
+      const blocks = emailSmartSplit(body, ['消費時間\\s', '交易日期\\s'], ['消費金額\\s']);
+      return emailParseBlocks(blocks, date, {
+        amountRe:   [/消費金額\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
+        merchantRe: [/消費商店\s+(.+)/i, /特店名稱\s+(.+)/i, /消費店家\s+(.+)/i],
+        dateRe:     [/消費時間\s+(\d{4}\/\d{2}\/\d{2})/i, /交易日期\s+(\d{4}\/\d{2}\/\d{2})/i, /消費時間\s+(\d{3}\/\d{2}\/\d{2})/i, /交易日期\s+(\d{3}\/\d{2}\/\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
+      }, this.name);
+    },
+  },
+  {
+    name: '中信銀行',
+    senderMatch:  f => /ctbcbank|ctbc|chinatrust/i.test(f),
+    subjectMatch: s => /中信|中國信託/i.test(s) && /消費|刷卡/i.test(s),
+    parse(body, subject, date) {
+      const blocks = emailSmartSplit(body, ['消費日期[：:]', '交易日期[：:]', '消費時間[：:]'], ['消費金額[：:]', '金額[：:]']);
+      return emailParseBlocks(blocks, date, {
+        amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$?\s*([\d,]+)/i],
+        merchantRe: [/消費地點[：:]\s*(.+)/i, /特店[：:]\s*(.+)/i, /商店[：:]\s*(.+)/i],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /消費日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/, /(\d{2}-\d{2})/],
+        inferYear:  true,
+      }, this.name);
+    },
+  },
+  {
+    name: '台新銀行',
+    senderMatch:  f => /taishinbank|taishin/i.test(f),
+    subjectMatch: s => /台新/i.test(s) && /消費|刷卡/i.test(s),
+    parse(body, subject, date) {
+      const blocks = emailSmartSplit(body, ['交易時間[：:]', '消費時間[：:]'], ['消費金額[：:]']);
+      return emailParseBlocks(blocks, date, {
+        amountRe:   [/消費金額[：:]\s*NTD?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i, /NTD\s*([\d,]+)/i],
+        merchantRe: [/消費商店[：:]\s*(.+)/i, /交易商店[：:]\s*(.+)/i],
+        dateRe:     [/交易時間[：:]\s*(\d{4}-\d{2}-\d{2})/i, /(\d{4}\/\d{2}\/\d{2})/i, /(\d{4}-\d{2}-\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
+      }, this.name);
+    },
+  },
+  {
+    name: '富邦銀行',
+    senderMatch:  f => /fubon|taipeibank|tpfubon/i.test(f),
+    subjectMatch: s => /富邦/i.test(s) && /消費|刷卡/i.test(s),
+    parse(body, subject, date) {
+      const blocks = emailSmartSplit(body, ['消費日期[：:]', '交易日期[：:]'], ['消費金額[：:]']);
+      return emailParseBlocks(blocks, date, {
+        amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
+        merchantRe: [/消費商店[：:]\s*(.+)/i, /消費地點[：:]\s*(.+)/i],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /消費日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
+      }, this.name);
+    },
+  },
+  {
+    name: '永豐銀行',
+    senderMatch:  f => /sinopac|banksinopac/i.test(f),
+    subjectMatch: s => /永豐/i.test(s) && /消費|刷卡/i.test(s),
+    parse(body, subject, date) {
+      const blocks = emailSmartSplit(body, ['消費日期[：:]', '交易日期[：:]'], ['消費金額[：:]']);
+      return emailParseBlocks(blocks, date, {
+        amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
+        merchantRe: [/消費商店[：:]\s*(.+)/i, /商店名稱[：:]\s*(.+)/i],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /消費日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
+      }, this.name);
+    },
+  },
+  {
+    name: '聯邦銀行',
+    senderMatch:  f => /unibank|unionbank/i.test(f),
+    subjectMatch: s => /聯邦/i.test(s) && /消費|刷卡/i.test(s),
+    parse(body, subject, date) {
+      const blocks = emailSmartSplit(body, ['消費日期[：:]', '消費時間[：:]'], ['消費金額[：:]']);
+      return emailParseBlocks(blocks, date, {
+        amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
+        merchantRe: [/消費商店[：:]\s*(.+)/i],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /消費日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
+      }, this.name);
+    },
+  },
+  {
+    name: 'LINE Pay',
+    senderMatch:  f => /linepay|line\.me|jkopay/i.test(f),
+    subjectMatch: s => /LINE Pay|街口|全支付/i.test(s),
+    parse(body, subject, date) {
+      const blocks = emailSmartSplit(body, ['交易時間[：:]', '付款時間[：:]'], ['NT\\$\\s*[\\d,]+']);
+      return emailParseBlocks(blocks, date, {
+        amountRe:   [/NT\$\s*([\d,]+)/i, /消費金額\s*([\d,]+)/i, /付款金額\s*([\d,]+)/i],
+        merchantRe: [/消費店家[：:]\s*(.+)/i, /付款至[：:]\s*(.+)/i, /交易商店[：:]\s*(.+)/i],
+        dateRe:     [/交易時間[：:]\s*(\d{4}[-\/]\d{2}[-\/]\d{2})/i, /(\d{4}-\d{2}-\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
+      }, this.name);
+    },
+  },
+];
+
+function emailParseGeneric(body, subject, date) {
+  if (!/消費|刷卡|信用卡/.test(subject + body)) return [];
+  const blocks = emailSmartSplit(body,
+    ['消費時間[：:]', '交易時間[：:]', '消費日期[：:]', '交易日期[：:]'],
+    ['消費金額[：:]', 'NT\\$\\s*[\\d,]+']
+  );
+  return emailParseBlocks(blocks, date, {
+    amountRe:   [/消費金額[：:\s]*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i, /NTD\s*([\d,]+)/i, /新台幣\s*([\d,]+)\s*元/i, /金額[：:\s]*\$?\s*([\d,]+)/i],
+    merchantRe: [/消費特店[：:]\s*(.+)/i, /消費商店[：:]\s*(.+)/i, /消費地點[：:]\s*(.+)/i, /特店[：:]\s*(.+)/i, /商店[：:]\s*(.+)/i],
+    dateRe:     [/(\d{4}\/\d{2}\/\d{2})/, /(\d{4}-\d{2}-\d{2})/, /(\d{3}\/\d{2}\/\d{2})/],
+  });
+}
+
+function emailSmartSplit(body, timeAnchors, amountAnchors) {
+  for (const anchor of timeAnchors) {
+    const blocks = emailSplitByPattern(body, anchor);
+    if (blocks.length >= 2) return blocks;
+  }
+  for (const anchor of (amountAnchors || [])) {
+    const blocks = emailSplitByPattern(body, anchor);
+    if (blocks.length >= 2) return blocks;
+  }
+  return [body];
+}
+
+function emailSplitByPattern(body, pattern) {
+  const re        = new RegExp(pattern, 'g');
+  const positions = [];
+  let m;
+  while ((m = re.exec(body)) !== null) positions.push(m.index);
+  if (positions.length < 2) return [body];
+  return positions.map((start, i) =>
+    body.slice(start, i < positions.length - 1 ? positions[i + 1] : body.length)
+  );
+}
+
+function emailParseBlocks(blocks, msgDate, opts, bankName) {
+  const results  = [];
+  const fallback = emailToDateStr(msgDate);
+  const catRe    = [/消費類別[：:]\s*(.+)/i, /交易類別[：:]\s*(.+)/i, /消費類型[：:]\s*(.+)/i];
+  for (const block of blocks) {
+    const amount = emailExtractAmount(block, opts.amountRe);
+    if (!amount || amount <= 0) continue;
+    const merchant = emailExtractText(block, opts.merchantRe || []);
+    const rawDate  = emailExtractDate(block, opts.dateRe || []);
+    let date;
+    if (!rawDate) {
+      date = fallback;
+    } else if (opts.inferYear && /^\d{2}-\d{2}$/.test(rawDate)) {
+      date = emailInferFullDate(rawDate, msgDate);
+    } else {
+      date = rawDate;
+    }
+    const hint = emailExtractText(block, opts.categoryRe || catRe);
+    results.push(emailBuildTx(amount, merchant, date, bankName, hint));
+  }
+  return results;
+}
+
+function emailExtractAmount(text, patterns) {
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      const n = parseInt(m[1].replace(/,/g, ''), 10);
+      if (n > 0) return n;
+    }
+  }
+  return null;
+}
+
+function emailExtractText(text, patterns) {
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      const t = m[1].trim().split(/[\n\r]/)[0].trim();
+      if (t.length > 0 && t.length < 80) return t;
+    }
+  }
+  return null;
+}
+
+function emailExtractDate(text, patterns) {
+  const cm = text.match(/(\d{3,4})年(\d{1,2})月(\d{1,2})日/);
+  if (cm) {
+    let cy = parseInt(cm[1]);
+    if (cy < 1900) cy += 1911;
+    return cy + '-' + String(cm[2]).padStart(2, '0') + '-' + String(cm[3]).padStart(2, '0');
+  }
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      const raw = m[1].replace(/\//g, '-');
+      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+      if (/^\d{3}-\d{2}-\d{2}$/.test(raw)) {
+        const [y, mo, d] = raw.split('-');
+        return (parseInt(y) + 1911) + '-' + mo + '-' + d;
+      }
+      if (/^\d{2}-\d{2}$/.test(raw)) return raw;
+    }
+  }
+  return null;
+}
+
+function emailInferFullDate(mmdd, msgDate) {
+  const [mo, d] = mmdd.split('-');
+  return msgDate.getFullYear() + '-' + mo.padStart(2, '0') + '-' + d.padStart(2, '0');
+}
+
+function emailToDateStr(date) {
+  return date.getFullYear() + '-' +
+    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+    String(date.getDate()).padStart(2, '0');
+}
+
+function emailMapCategory(merchant, hint) {
+  if (hint) {
+    for (const [pattern, cat] of Object.entries(EMAIL_CATEGORY_HINT_MAP)) {
+      if (new RegExp(pattern, 'i').test(hint)) return cat;
+    }
+  }
+  if (!merchant) return '其他';
+  for (const [pattern, cat] of Object.entries(EMAIL_CATEGORY_MAP)) {
+    if (new RegExp(pattern, 'i').test(merchant)) return cat;
+  }
+  return '其他';
+}
+
+function emailBuildTx(amount, merchant, date, bankName, hint) {
+  return {
+    date,
+    amount,
+    category: emailMapCategory(merchant, hint),
+    note:     merchant ? merchant.slice(0, 60) : '',
+    bankName: bankName || null,
+  };
 }
 
 // ── Stock price fetching (unchanged from v1) ───────────────────────────────
