@@ -1,7 +1,25 @@
-name = "finance-notion-sync"
+name = "cashio-worker"
 main = "worker.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
 
-# Set these secrets via CLI (never commit actual values):
-#   npx wrangler secret put NOTION_TOKEN
-#   npx wrangler secret put NOTION_PAGE_ID
+[[d1_databases]]
+binding = "DB"
+database_name = "cashio-db"
+database_id = "98110c11-9148-4ae1-82d9-2bf751cf1f46"
+
+# Optional: keep KV binding for backward-compat until KV data is migrated
+# [[kv_namespaces]]
+# binding = "CASHIO_KV"
+# id = "YOUR_EXISTING_KV_ID"
+
+[vars]
+# Replace these with your actual URLs after deploying
+FRONTEND_URL = "https://devinasincs.github.io/financial-app/"
+WORKER_URL   = "https://cashio-worker.jacky90052414.workers.dev"
+
+# Secrets — set via CLI (never commit these):
+#   wrangler secret put GOOGLE_CLIENT_ID
+#   wrangler secret put GOOGLE_CLIENT_SECRET
+#   wrangler secret put ENCRYPTION_KEY      (openssl rand -base64 32)
+#   wrangler secret put INTERNAL_SECRET     (openssl rand -hex 32)

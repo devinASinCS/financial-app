@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Modal — generic dialog component
  */
 const Modal = (() => {
@@ -358,6 +358,13 @@ const Modal = (() => {
       quantity: '', price: '', fee: '', tax: '', market
     };
 
+    const banks = Store.getBanks();
+    const _defBank = Store.getDefaultBankId();
+    const tradeBankId = (existing && existing.bankId) || _defBank || '';
+    const bankOpts = banks.map(b =>
+      `<option value="${b.id}" ${tradeBankId === b.id ? 'selected' : ''}>${b.name}</option>`
+    ).join('');
+
     open(`
       <div class="modal-header">
         <span class="modal-title">${isEdit ? '編輯' : '新增'}${isTW ? '台股' : '美股'}交易</span>
@@ -412,6 +419,14 @@ const Modal = (() => {
           </div>
         </div>
         <div id="trade-total-preview" style="background:#F0FDF4;padding:10px 14px;border-radius:8px;font-size:13px;color:#065F46;"></div>
+        ${banks.length > 0 ? `
+        <div class="form-group" style="margin-top:12px;">
+          <label class="form-label">扣款銀行 <span style="font-size:11px;color:#9CA3AF;font-weight:400;">（選填）</span></label>
+          <select id="trade-bank" class="form-select">
+            <option value="">不連結銀行</option>
+            ${bankOpts}
+          </select>
+        </div>` : ''}
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="Modal.close()">取消</button>
@@ -500,10 +515,11 @@ const Modal = (() => {
     const price    = parseFloat(document.getElementById('trade-price').value);
     const fee      = parseFloat(document.getElementById('trade-fee').value || 0);
     const tax      = parseFloat(document.getElementById('trade-tax').value || 0);
+    const bankId  = document.getElementById('trade-bank')?.value || null;
 
     if (!date || !symbol || !quantity || !price) { Utils.showToast('請填寫必要欄位'); return; }
 
-    const data = { date, symbol, name: name || symbol, action, quantity, price, fee, tax, market };
+    const data = { date, symbol, name: name || symbol, action, quantity, price, fee, tax, market, bankId: bankId || null };
     if (existingId) {
       Store.updateStockTrade(existingId, data);
       Utils.showToast('已更新');

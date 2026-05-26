@@ -19,11 +19,10 @@
 // ─── 使用者設定區 ─────────────────────────────────────────────────────────────
 var CONFIG = {
   // Cashio 設定頁裡的 Cloudflare Worker URL（相同網址）
-  workerUrl: 'https://YOUR_WORKER.YOUR_NAME.workers.dev',
+  workerUrl: 'https://cashio-worker.jacky90052414.workers.dev/',
 
-  // 選填：安全金鑰。若在 Cloudflare Worker 環境變數設定了 ADD_TX_SECRET，
-  // 請在這裡填入相同的值；否則留空。
-  secret: '',
+  // 在 Cashio「設定 → Gmail 自動匯入 API 金鑰」產生後，貼入此處。
+  apiKey: '',
 
   // Gmail 搜尋條件，用來找信用卡消費通知郵件。
   // 可依你的銀行調整 subject 關鍵字。
@@ -48,6 +47,25 @@ var CONFIG = {
     '藥局|藥妝|屈臣氏|Watsons|康是美|Cosmed':              '醫療',
     '全聯|家樂福|Carrefour|大潤發|COSTCO|好市多|愛買':     '購物',
     '電費|水費|瓦斯|電信|中華電信|台哥大|遠傳|台電':       '水電費',
+    '餐廳|餐飲|飲食|美食|外食|Food':                  '餐飲',
+    '購物|零售|網購|百貨|超市|超商|量販|Retail':        '購物',
+    '交通|運輸|加油|停車|Transport':                   '交通',
+    '醫療|藥局|診所|醫院|健康|Health':                 '醫療',
+    '娛樂|休閒|電影|KTV|遊戲|Entertainment':           '娛樂',
+    '訂閱|訂購|線上服務|串流|Subscription':             '訂閱',
+    '水電|公用|繳費|電信|Utility':                     '水電費',
+  },
+
+  // 消費類別欄位 → 支出分類對應表（優先於特店名稱比對）
+  categoryHintMap: {
+    '餐廳|餐飲|飲食|美食|外食|Food':                  '餐飲',
+    '購物|零售|網購|百貨|超市|超商|量販|Retail':        '購物',
+    '交通|運輸|加油|停車|Transport':                   '交通',
+    '醫療|藥局|診所|醫院|健康|Health':                 '醫療',
+    '娛樂|休閒|電影|KTV|遊戲|Entertainment':           '娛樂',
+    '訂閱|訂購|線上服務|串流|Subscription':             '訂閱',
+    '水電|公用|繳費|電信|Utility':                     '水電費',
+    '旅遊|住宿|飯店|機票|Travel':                     '旅遊住宿',
   },
 };
 // ─────────────────────────────────────────────────────────────────────────────
@@ -137,15 +155,18 @@ function postTransactions(txList) {
     Logger.log('❌ 尚未設定 CONFIG.workerUrl');
     return false;
   }
+  if (!CONFIG.apiKey) {
+    Logger.log('❌ 尚未設定 CONFIG.apiKey（請至 Cashio 設定頁產生金鑰）');
+    return false;
+  }
 
-  var payload = { action: 'add_transactions', transactions: txList };
-  if (CONFIG.secret) payload.secret = CONFIG.secret;
-
+  var workerBase = CONFIG.workerUrl.replace(/\/$/, '');
   try {
-    var res  = UrlFetchApp.fetch(CONFIG.workerUrl, {
+    var res  = UrlFetchApp.fetch(workerBase + '/api/import', {
       method:             'post',
       contentType:        'application/json',
-      payload:            JSON.stringify(payload),
+      headers:            { 'Authorization': 'Bearer ' + CONFIG.apiKey },
+      payload:            JSON.stringify({ transactions: txList }),
       muteHttpExceptions: true,
     });
     var json = JSON.parse(res.getContentText());
@@ -153,6 +174,7 @@ function postTransactions(txList) {
       Logger.log('❌ Worker 回應錯誤：' + json.error);
       return false;
     }
+    Logger.log('✅ 匯入 ' + (json.imported || 0) + ' 筆新交易');
     return true;
   } catch (e) {
     Logger.log('❌ 網路錯誤：' + e.message);
@@ -238,7 +260,10 @@ var BANK_PARSERS = [
         dateRe: [
           /消費時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i,
           /交易時間[：:]\s*(\d{4}\/\d{2}\/\d{2})/i,
+          /消費時間[：:]\s*(\d{3}\/\d{2}\/\d{2})/i,
+          /交易時間[：:]\s*(\d{3}\/\d{2}\/\d{2})/i,
           /(\d{4}\/\d{2}\/\d{2})/,      // 表格格式：正卡 2026/04/27 17:23 TW
+          /(\d{3}\/\d{2}\/\d{2})/,      // 民國年格式：113/04/27
         ],
       }, this.name);
     },
@@ -257,7 +282,7 @@ var BANK_PARSERS = [
       return parseBlocks(blocks, msgDate, {
         amountRe:   [/消費金額\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
         merchantRe: [/消費商店\s+(.+)/i, /特店名稱\s+(.+)/i, /消費店家\s+(.+)/i],
-        dateRe:     [/消費時間\s+(\d{4}\/\d{2}\/\d{2})/i, /交易日期\s+(\d{4}\/\d{2}\/\d{2})/i],
+        dateRe:     [/消費時間\s+(\d{4}\/\d{2}\/\d{2})/i, /交易日期\s+(\d{4}\/\d{2}\/\d{2})/i, /消費時間\s+(\d{3}\/\d{2}\/\d{2})/i, /交易日期\s+(\d{3}\/\d{2}\/\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
       }, this.name);
     },
   },
@@ -275,7 +300,7 @@ var BANK_PARSERS = [
       return parseBlocks(blocks, msgDate, {
         amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$?\s*([\d,]+)/i],
         merchantRe: [/消費地點[：:]\s*(.+)/i, /特店[：:]\s*(.+)/i, /商店[：:]\s*(.+)/i],
-        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /(\d{2}\/\d{2})/],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /消費日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/, /(\d{2}\/\d{2})/],
         inferYear:  true,
       }, this.name);
     },
@@ -294,7 +319,7 @@ var BANK_PARSERS = [
       return parseBlocks(blocks, msgDate, {
         amountRe:   [/消費金額[：:]\s*NTD?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i, /NTD\s*([\d,]+)/i],
         merchantRe: [/消費商店[：:]\s*(.+)/i, /交易商店[：:]\s*(.+)/i],
-        dateRe:     [/交易時間[：:]\s*(\d{4}-\d{2}-\d{2})/i, /(\d{4}\/\d{2}\/\d{2})/i, /(\d{4}-\d{2}-\d{2})/i],
+        dateRe:     [/交易時間[：:]\s*(\d{4}-\d{2}-\d{2})/i, /(\d{4}\/\d{2}\/\d{2})/i, /(\d{4}-\d{2}-\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
       }, this.name);
     },
   },
@@ -312,7 +337,7 @@ var BANK_PARSERS = [
       return parseBlocks(blocks, msgDate, {
         amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
         merchantRe: [/消費商店[：:]\s*(.+)/i, /消費地點[：:]\s*(.+)/i],
-        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /消費日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /交易日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
       }, this.name);
     },
   },
@@ -330,7 +355,7 @@ var BANK_PARSERS = [
       return parseBlocks(blocks, msgDate, {
         amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
         merchantRe: [/消費商店[：:]\s*(.+)/i, /商店名稱[：:]\s*(.+)/i],
-        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /消費日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
       }, this.name);
     },
   },
@@ -348,7 +373,7 @@ var BANK_PARSERS = [
       return parseBlocks(blocks, msgDate, {
         amountRe:   [/消費金額[：:]\s*NT\$?\s*([\d,]+)/i, /NT\$\s*([\d,]+)/i],
         merchantRe: [/消費商店[：:]\s*(.+)/i],
-        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i],
+        dateRe:     [/消費日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/i, /消費日期[：:]\s*(\d{3}\/\d{2}\/\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
       }, this.name);
     },
   },
@@ -366,7 +391,7 @@ var BANK_PARSERS = [
       return parseBlocks(blocks, msgDate, {
         amountRe:   [/NT\$\s*([\d,]+)/i, /消費金額\s*([\d,]+)/i, /付款金額\s*([\d,]+)/i],
         merchantRe: [/消費店家[：:]\s*(.+)/i, /付款至[：:]\s*(.+)/i, /交易商店[：:]\s*(.+)/i],
-        dateRe:     [/交易時間[：:]\s*(\d{4}[-\/]\d{2}[-\/]\d{2})/i, /(\d{4}-\d{2}-\d{2})/i],
+        dateRe:     [/交易時間[：:]\s*(\d{4}[-\/]\d{2}[-\/]\d{2})/i, /(\d{4}-\d{2}-\d{2})/i, /(\d{3}\/\d{2}\/\d{2})/],
       }, this.name);
     },
   },
@@ -400,6 +425,7 @@ function parseGeneric(body, subject, msgDate) {
     dateRe: [
       /(\d{4}\/\d{2}\/\d{2})/,
       /(\d{4}-\d{2}-\d{2})/,
+      /(\d{3}\/\d{2}\/\d{2})/,
     ],
   });
 }
@@ -419,6 +445,11 @@ function parseGeneric(body, subject, msgDate) {
 function parseBlocks(blocks, msgDate, opts, bankName) {
   var results = [];
   var fallbackDate = toDateStr(msgDate);
+  var defaultCategoryRe = [
+    /消費類別[：:]\s*(.+)/i,
+    /交易類別[：:]\s*(.+)/i,
+    /消費類型[：:]\s*(.+)/i,
+  ];
 
   for (var i = 0; i < blocks.length; i++) {
     var block = blocks[i];
@@ -438,7 +469,8 @@ function parseBlocks(blocks, msgDate, opts, bankName) {
       date = rawDate;
     }
 
-    results.push(buildTx(amount, merchant, date, bankName));
+    var categoryHint = extractText(block, opts.categoryRe || defaultCategoryRe);
+    results.push(buildTx(amount, merchant, date, bankName, categoryHint));
   }
 
   return results;
@@ -470,11 +502,23 @@ function extractText(text, patterns) {
 }
 
 function extractDate(text, patterns) {
+  // Chinese/ROC 年月日 format: 2026年4月27日 or 113年4月27日
+  var cm = text.match(/(\d{3,4})年(\d{1,2})月(\d{1,2})日/);
+  if (cm) {
+    var cy = parseInt(cm[1]);
+    if (cy < 1900) cy += 1911;
+    return cy + '-' + String(cm[2]).padStart(2, '0') + '-' + String(cm[3]).padStart(2, '0');
+  }
   for (var i = 0; i < patterns.length; i++) {
     var m = text.match(patterns[i]);
     if (m) {
       var raw = m[1].replace(/\//g, '-');
       if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+      // ROC 民國 3-digit year: 113-04-27 → 2024-04-27
+      if (/^\d{3}-\d{2}-\d{2}$/.test(raw)) {
+        var p = raw.split('-');
+        return (parseInt(p[0]) + 1911) + '-' + p[1] + '-' + p[2];
+      }
       if (/^\d{2}-\d{2}$/.test(raw)) return raw; // MM-DD，需 inferFullDate
     }
   }
@@ -498,27 +542,32 @@ function toDateStr(date) {
   return y + '-' + mo + '-' + d;
 }
 
-function mapCategory(merchant) {
+function mapCategory(merchant, categoryHint) {
+  var p;
+  if (categoryHint) {
+    for (p in CONFIG.categoryHintMap) {
+      if (new RegExp(p, 'i').test(categoryHint)) return CONFIG.categoryHintMap[p];
+    }
+  }
   if (!merchant) return CONFIG.defaultCategory;
-  for (var pattern in CONFIG.categoryMap) {
-    if (new RegExp(pattern, 'i').test(merchant)) return CONFIG.categoryMap[pattern];
+  for (p in CONFIG.categoryMap) {
+    if (new RegExp(p, 'i').test(merchant)) return CONFIG.categoryMap[p];
   }
   return CONFIG.defaultCategory;
 }
 
-function buildTx(amount, merchant, date, bankName) {
+function buildTx(amount, merchant, date, bankName, categoryHint) {
   return {
     date:          date,
     type:          'expense',
-    amount:        amount,        // 必須是 number
-    category:      mapCategory(merchant),
+    amount:        amount,
+    category:      mapCategory(merchant, categoryHint),
     note:          merchant ? merchant.slice(0, 60) : '',
     source:        'email_import',
     paymentMethod: 'credit_card',
     bankName:      bankName || null,
   };
 }
-
 
 // ─── 觸發器管理 ───────────────────────────────────────────────────────────────
 
@@ -591,7 +640,7 @@ function clearProcessedIds() {
 // 重置：執行 clearProcessedStmtIds()
 // ═══════════════════════════════════════════════════════════════════════════════
 
-var STOCK_SEARCH_QUERY = '(subject:對帳單 OR subject:月結單 OR subject:交割確認書 OR subject:交割帳單 OR subject:証券 OR subject:證券) has:attachment newer_than:35d';
+var STOCK_SEARCH_QUERY = '(subject:證券日對帳單 OR subject:買賣報告書) has:attachment newer_than:35d';
 
 /**
  * 主函式 — 每日自動執行，掃描對帳單信件並上傳 PDF 至 Worker 佇列。
@@ -673,6 +722,12 @@ function _postStockPdf(data) {
     Logger.log('❌ 尚未設定 CONFIG.workerUrl');
     return false;
   }
+  if (!CONFIG.apiKey) {
+    Logger.log('❌ 尚未設定 CONFIG.apiKey（請至 Cashio 設定頁產生金鑰）');
+    return false;
+  }
+
+  var workerBase = CONFIG.workerUrl.replace(/\/$/, '');
   var payload = {
     action:    'queue_stock_pdf',
     broker:    data.broker,
@@ -681,12 +736,12 @@ function _postStockPdf(data) {
     fileName:  data.fileName,
     pdfBase64: data.pdfBase64,
   };
-  if (CONFIG.secret) payload.secret = CONFIG.secret;
 
   try {
-    var res  = UrlFetchApp.fetch(CONFIG.workerUrl, {
+    var res  = UrlFetchApp.fetch(workerBase, {
       method:             'post',
       contentType:        'application/json',
+      headers:            { 'Authorization': 'Bearer ' + CONFIG.apiKey },
       payload:            JSON.stringify(payload),
       muteHttpExceptions: true,
     });

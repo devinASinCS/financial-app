@@ -113,9 +113,25 @@
   }
 
   // ── Bootstrap ───────────────────────────────────────────────────
-  function init() {
+  async function init() {
+    // Check auth — show login overlay if not signed in
+    const user = await Auth.init();
+    if (!user) {
+      Auth.renderLogin();
+      return;
+    }
+
+    // Show spinner while pulling user data from D1 before first render
+    document.getElementById('app-content').innerHTML =
+      '<div class="flex items-center justify-center py-32">' +
+      '<span class="loading loading-spinner loading-lg text-primary"></span></div>';
+
+    await Sync.pull();
+
     updateSidebarDate();
     seedDemoData();
+
+    Auth.injectUserBadge(user);
 
     window.addEventListener('hashchange', handleHashChange);
 
@@ -130,9 +146,6 @@
 
     // Run auto-processing after initial render (non-blocking)
     setTimeout(() => runAutoProcessing(), 500);
-
-    // Sync from cloud if remote data is newer (non-blocking), then start polling
-    setTimeout(() => NotionSync.syncOnStart(), 1500);
   }
 
   if (document.readyState === 'loading') {

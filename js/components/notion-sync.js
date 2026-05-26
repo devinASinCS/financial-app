@@ -104,9 +104,10 @@ const NotionSync = (() => {
     if (!url) throw new Error('尚未設定 Cloudflare Worker URL');
 
     const res = await fetch(url, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(body),
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        JSON.stringify(body),
     });
 
     let result;

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Store — localStorage-backed state management
  * All data persisted in localStorage as JSON.
  */
@@ -32,6 +32,7 @@ const Store = (() => {
     upcomingTWDivs: 'fm_tw_upcoming_divs',
     events:         'fm_expense_events',
     exchangeRates:  'fm_exchange_rates',
+    settings:       'fm_settings',
   };
 
   // ── Helpers ─────────────────────────────────────────────────────
@@ -53,6 +54,14 @@ const Store = (() => {
   }
   function todayStr() {
     return new Date().toISOString().slice(0, 10);
+  }
+
+
+  // Default bank setting
+  function getDefaultBankId() { return (load(KEYS.settings, {}) || {}).defaultBankId || null; }
+  function setDefaultBankId(id) {
+    const s = load(KEYS.settings, {}) || {};
+    save(KEYS.settings, { ...s, defaultBankId: id || null });
   }
 
   // ── Transaction CRUD ────────────────────────────────────────────
@@ -108,22 +117,52 @@ const Store = (() => {
     return market ? all.filter(t => t.market === market) : all;
   }
 
+  // Adjust bank balance when a stock trade is added/edited/deleted.
+  function _adjustBankForTrade(trade, reverse) {
+    if (!trade || !trade.bankId) return;
+    const bank = getBanks().find(b => b.id === trade.bankId);
+    if (!bank) return;
+    const currency = trade.market === 'US' ? 'USD' : 'TWD';
+    const wallets = bank.wallets || [{ currency: 'TWD', balance: bank.balance || 0 }];
+    let wIdx = wallets.findIndex(w => w.currency === currency);
+    if (wIdx === -1) wIdx = wallets.findIndex(w => w.currency === 'TWD');
+    if (wIdx === -1) return;
+    const qty = trade.quantity || 0;
+    const price = trade.price || 0;
+    const fee = trade.fee || 0;
+    const tax = trade.tax || 0;
+    const net = trade.action === 'buy' ? qty * price + fee + tax : qty * price - fee - tax;
+    let delta = trade.action === 'buy' ? -net : net;
+    if (reverse) delta = -delta;
+    const newWallets = wallets.map((w, i) => i === wIdx ? { ...w, balance: (w.balance || 0) + delta } : w);
+    updateBank(bank.id, { wallets: newWallets });
+  }
+
   function addStockTrade(trade) {
     const list = load(KEYS.stockTrades);
     const item = { id: uid(), createdAt: new Date().toISOString(), ...trade };
     list.push(item);
     list.sort((a, b) => new Date(a.date) - new Date(b.date));
     save(KEYS.stockTrades, list);
+    _adjustBankForTrade(item, false);
     return item;
   }
 
   function updateStockTrade(id, updates) {
-    const list = load(KEYS.stockTrades).map(t => t.id === id ? { ...t, ...updates } : t);
-    save(KEYS.stockTrades, list);
+    const list = load(KEYS.stockTrades);
+    const old = list.find(t => t.id === id);
+    if (old) _adjustBankForTrade(old, true);
+    const newList = list.map(t => t.id === id ? { ...t, ...updates } : t);
+    save(KEYS.stockTrades, newList);
+    const updated = newList.find(t => t.id === id);
+    if (updated) _adjustBankForTrade(updated, false);
   }
 
   function deleteStockTrade(id) {
-    save(KEYS.stockTrades, load(KEYS.stockTrades).filter(t => t.id !== id));
+    const list = load(KEYS.stockTrades);
+    const old = list.find(t => t.id === id);
+    if (old) _adjustBankForTrade(old, true);
+    save(KEYS.stockTrades, list.filter(t => t.id !== id));
   }
 
   // ── Dividend CRUD ───────────────────────────────────────────────
@@ -610,7 +649,7 @@ const Store = (() => {
     exportData, importData,
     getStockPrices, saveStockPrices, updateStockPrice,
     getUpcomingTWDivs, saveUpcomingTWDivs,
-    getEvents, addEvent, updateEvent, deleteEvent, getEventTransactions,
     DEFAULT_EXCHANGE_RATES, getExchangeRates, saveExchangeRates, getExchangeRate,
+    getDefaultBankId, setDefaultBankId,
   };
 })();

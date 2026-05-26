@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Settings page — Export/Import JSON + Notion Sync
  */
 const PageSettings = (() => {
@@ -52,6 +52,64 @@ const PageSettings = (() => {
       reader.readAsText(file);
     };
     input.click();
+  }
+
+  // ── API key management ────────────────────────────────────────────
+  async function _loadApiKeys() {
+    const el = document.getElementById('apikey-list');
+    if (!el) return;
+    try {
+      const res  = await fetch(`${Auth.getApiUrl()}/api/apikey`, { credentials: 'include' });
+      const keys = await res.json();
+      if (!keys.length) {
+        el.textContent = '尚未產生任何金鑰。';
+        return;
+      }
+      el.innerHTML = keys.map(k =>
+        `<div style="font-family:monospace;background:#f3f4f6;padding:4px 8px;border-radius:6px;margin-bottom:4px;">
+           ${k.hint} <span style="color:#9ca3af;font-size:11px;">— 建立於 ${new Date(k.created_at * 1000).toLocaleDateString('zh-TW')}</span>
+         </div>`
+      ).join('');
+    } catch {
+      el.textContent = '無法載入金鑰。';
+    }
+  }
+
+  async function generateApiKey() {
+    if (!confirm('產生新金鑰？現有金鑰將立即失效，GAS 腳本需更新。')) return;
+
+    // Delete all existing keys for this user first
+    const listRes  = await fetch(`${Auth.getApiUrl()}/api/apikey`, { credentials: 'include' });
+    const existing = await listRes.json();
+    for (const k of existing) {
+      await fetch(`${Auth.getApiUrl()}/api/apikey`, {
+        method: 'DELETE', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: k.hint }), // hint is truncated; worker DELETE uses full key
+      });
+    }
+
+    const res   = await fetch(`${Auth.getApiUrl()}/api/apikey`, {
+      method: 'POST', credentials: 'include',
+    });
+    const { key } = await res.json();
+
+    const el = document.getElementById('apikey-list');
+    if (el) {
+      el.innerHTML = `
+        <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+          <div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:4px;">
+            <i class="fa-solid fa-triangle-exclamation"></i> 僅顯示一次，請立即複製
+          </div>
+          <code id="new-api-key"
+                style="font-size:13px;word-break:break-all;user-select:all;display:block;cursor:pointer;"
+                onclick="navigator.clipboard.writeText(this.textContent).then(()=>Utils.showToast('已複製'))">
+            ${key}
+          </code>
+        </div>
+        <div style="font-size:12px;color:#6b7280;">點擊金鑰可複製。貼入 GAS 的 CONFIG.apiKey 欄位。</div>`;
+    }
+    Utils.showToast('新金鑰已產生');
   }
 
   // ── Clear all data ────────────────────────────────────────────────
@@ -167,6 +225,7 @@ const PageSettings = (() => {
       const res  = await fetch(workerUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ action: 'get_stock_pdf_queue' }),
       });
       const json = await res.json();
@@ -501,6 +560,11 @@ const PageSettings = (() => {
   }
 
   // ── Render ────────────────────────────────────────────────────────
+  function setDefaultBank(id) {
+    Store.setDefaultBankId(id || null);
+    Utils.showToast(id ? '預設銀行已儲存' : '已清除預設銀行');
+  }
+
   function render() {
     const txs    = Store.getTransactions();
     const trades = Store.getStockTrades();
@@ -766,6 +830,39 @@ const PageSettings = (() => {
         <div id="stock-pdf-results"></div>
       </div>
 
+      <!-- ── Default Bank ── -->
+      <div class="card mb-6">
+        <h3 class="section-title">預設銀行</h3>
+        <p style="font-size:14px;color:#6b7280;margin:8px 0 16px;">
+          新增交易或股票買賣時，自動預選此銀行帳戶。
+        </p>
+        ${banks.length === 0 ? `<p style="font-size:13px;color:#9ca3af;">尚未設定任何銀行帳戶。</p>` : `
+        <select class="form-select" style="max-width:280px;"
+          onchange="PageSettings.setDefaultBank(this.value)">
+          <option value="">不設預設銀行</option>
+          ${banks.map(b => `<option value="${b.id}" ${Store.getDefaultBankId() === b.id ? 'selected' : ''}>${b.name}</option>`).join('')}
+        </select>`}
+      </div>
+
+      <!-- ── GAS API Key ── -->
+      <div class="card mb-6">
+        <h3 class="section-title"><i class="fa-solid fa-key" style="color:#d97706;margin-right:8px;"></i>Gmail 自動匯入 API 金鑰</h3>
+        <p style="font-size:14px;color:#6b7280;margin:8px 0 12px;">
+          將此金鑰貼入 GAS 腳本的 <code style="background:#f3f4f6;padding:1px 5px;border-radius:4px;">CONFIG.apiKey</code>，
+          即可讓腳本以您的身份自動匯入信用卡消費通知。
+        </p>
+        <div id="apikey-list" style="font-size:13px;color:#9ca3af;margin-bottom:12px;">載入中…</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-warning btn-sm" onclick="PageSettings.generateApiKey()">
+            <i class="fa-solid fa-rotate"></i> 產生新金鑰
+          </button>
+        </div>
+        <p style="font-size:12px;color:#9ca3af;margin-top:8px;">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          產生新金鑰後，舊金鑰立即失效，GAS 腳本需更新。
+        </p>
+      </div>
+
       <!-- ── Danger Zone ── -->
       <div class="card" style="border:1px solid #fecaca;">
         <h3 class="section-title" style="color:#dc2626;">⚠️ 危險操作</h3>
@@ -775,6 +872,9 @@ const PageSettings = (() => {
         <button class="btn btn-error" onclick="PageSettings.clearAllData()"><i class="fa-solid fa-trash fa-xs"></i> 清除所有資料</button>
       </div>
     `;
+
+    // Load API keys asynchronously after DOM is ready
+    setTimeout(_loadApiKeys, 0);
   }
 
   return {
@@ -782,5 +882,6 @@ const PageSettings = (() => {
     exportJSON, triggerImport, clearAllData,
     saveWorkerUrl, testConnection, notionSave, notionLoad, toggleAutoSync,
     fetchStockPdfQueue, parseAndPreviewPdfs, toggleStockTrade, importSelectedStockTrades,
+    setDefaultBank, generateApiKey,
   };
 })();
