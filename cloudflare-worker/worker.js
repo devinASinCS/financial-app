@@ -91,7 +91,7 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runEmailImport(env));
+    ctx.waitUntil(runScheduledImport(env));
   },
 };
 
@@ -526,19 +526,24 @@ function sessionCookie(val, maxAge) {
   return `session=${val}; HttpOnly; Secure; SameSite=None; Max-Age=${maxAge}; Path=/`;
 }
 
-// ── Scheduled email import ─────────────────────────────────────────────────
-async function runEmailImport(env) {
+// ── Scheduled import (email transactions + stock PDFs) ─────────────────────
+async function runScheduledImport(env) {
   const users = await env.DB.prepare(
     'SELECT id, refresh_token FROM users WHERE refresh_token IS NOT NULL'
   ).all();
   for (const user of users.results) {
-    try { await processUserEmails(user, env); } catch (e) { /* skip failed user */ }
+    try {
+      const token = await getGmailAccessToken(user.refresh_token, env);
+      if (!token) continue;
+      await Promise.allSettled([
+        processUserEmails(user, token, env),
+        processUserStockPdfs(user, token, env),
+      ]);
+    } catch { /* skip failed user */ }
   }
 }
 
-async function processUserEmails(user, env) {
-  const accessToken = await getGmailAccessToken(user.refresh_token, env);
-  if (!accessToken) return;
+async function processUserEmails(user, accessToken, env) {
 
   const row = await env.DB.prepare(
     "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'email_processed_ids'"
@@ -597,6 +602,85 @@ async function processUserEmails(user, env) {
     };
   });
   await _mergeTx(user.id, txList, env);
+}
+
+const STOCK_PDF_SEARCH = '(subject:證券日對帳單 OR subject:買賣報告書) has:attachment newer_than:35d';
+const MAX_PDF_BYTES    = 700_000; // ~950KB base64 — stay under D1 1MB row limit
+
+async function processUserStockPdfs(user, accessToken, env) {
+  const row = await env.DB.prepare(
+    "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'stock_pdf_processed_ids'"
+  ).bind(user.id).first();
+  const processedIds = new Set(row ? JSON.parse(row.value) : []);
+
+  const messages = await searchGmailMessages(accessToken, STOCK_PDF_SEARCH);
+  const queue    = await _getPdfQueue(user.id, env);
+  const newIds   = [];
+
+  for (const { id: msgId } of messages) {
+    if (processedIds.has(msgId)) continue;
+    newIds.push(msgId);
+    try {
+      const msg     = await getGmailMessage(accessToken, msgId);
+      const headers = msg.payload?.headers || [];
+      const from    = headers.find(h => h.name === 'From')?.value || '';
+      const subject = headers.find(h => h.name === 'Subject')?.value || '';
+      const date    = emailToDateStr(new Date(parseInt(msg.internalDate)));
+      const broker  = _detectBrokerFromEmail(from, subject);
+
+      const pdfs = _findPdfParts(msg.payload);
+      for (const part of pdfs) {
+        if ((part.body?.size || 0) > MAX_PDF_BYTES) continue;
+        const attRes  = await fetch(
+          `${GMAIL_API}/messages/${msgId}/attachments/${part.body.attachmentId}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!attRes.ok) continue;
+        const attData = await attRes.json();
+        queue.push({
+          id:        randHex(8),
+          broker,
+          emailDate: date,
+          subject,
+          fileName:  part.filename || 'statement.pdf',
+          pdfBase64: attData.data.replace(/-/g, '+').replace(/_/g, '/'),
+          addedAt:   new Date().toISOString(),
+        });
+      }
+    } catch { /* skip unparseable message */ }
+  }
+
+  if (newIds.length) {
+    const allIds = [...processedIds, ...newIds].slice(-500);
+    await env.DB.prepare(`
+      INSERT INTO user_data (user_id, key, value, updated_at) VALUES (?1, 'stock_pdf_processed_ids', ?2, ?3)
+      ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `).bind(user.id, JSON.stringify(allIds), nowSec()).run();
+    await _savePdfQueue(user.id, queue, env);
+  }
+}
+
+function _findPdfParts(payload, found = []) {
+  if (!payload) return found;
+  if ((payload.mimeType === 'application/pdf' || (payload.filename || '').toLowerCase().endsWith('.pdf'))
+      && payload.body?.attachmentId) {
+    found.push(payload);
+  }
+  for (const part of (payload.parts || [])) _findPdfParts(part, found);
+  return found;
+}
+
+function _detectBrokerFromEmail(from, subject) {
+  const s = (from + ' ' + subject).toLowerCase();
+  if (/yuanta|元大/.test(s))    return '元大證券';
+  if (/fubon|富邦/.test(s))      return '富邦證券';
+  if (/sinopac|永豐/.test(s))    return '永豐金證券';
+  if (/kgi|凱基/.test(s))        return '凱基證券';
+  if (/cathay|國泰/.test(s))     return '國泰證券';
+  if (/firstsec|第一金/.test(s)) return '第一金證券';
+  if (/masterlink|群益/.test(s)) return '群益證券';
+  if (/interactivebrokers|ib\.com/.test(s)) return 'Interactive Brokers';
+  return '未知券商';
 }
 
 async function getGmailAccessToken(encryptedRefreshToken, env) {
