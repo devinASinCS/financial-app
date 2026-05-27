@@ -55,6 +55,11 @@ export default {
       if (path === '/auth/logout') {
         return handleLogout(req, env);
       }
+      if (path === '/debug/pdf-check' && method === 'GET') {
+        const user = await sessionUser(req, env);
+        if (!user) return json({ error: 'Unauthorized' }, 401);
+        return debugPdfCheck(user, env, json);
+      }
       if (path === '/auth/me' && method === 'GET') {
         const user = await sessionUser(req, env);
         if (!user) return json({ error: 'Unauthorized' }, 401);
@@ -695,6 +700,38 @@ function _detectBrokerFromEmail(from, subject) {
   if (/masterlink|群益/.test(s)) return '群益證券';
   if (/interactivebrokers|ib\.com/.test(s)) return 'Interactive Brokers';
   return '未知券商';
+}
+
+async function debugPdfCheck(user, env, json) {
+  const row = await env.DB.prepare('SELECT refresh_token FROM users WHERE id = ?').bind(user.id).first();
+  if (!row?.refresh_token) return json({ error: 'no refresh_token' });
+  const token = await getGmailAccessToken(row.refresh_token, env);
+  if (!token) return json({ error: 'token exchange failed' });
+
+  const messages = await searchGmailMessages(token, STOCK_PDF_SEARCH);
+  if (!messages.length) return json({ found: 0, query: STOCK_PDF_SEARCH });
+
+  const msg = await getGmailMessage(token, messages[0].id);
+  function summarizeParts(payload, depth = 0) {
+    if (!payload) return null;
+    const node = {
+      mimeType: payload.mimeType,
+      filename: payload.filename || null,
+      bodySize: payload.body?.size || 0,
+      hasAttachmentId: !!payload.body?.attachmentId,
+      hasBodyData: !!(payload.body?.data),
+    };
+    if (payload.parts?.length) node.parts = payload.parts.map(p => summarizeParts(p, depth + 1));
+    return node;
+  }
+  const headers = msg.payload?.headers || [];
+  return json({
+    found: messages.length,
+    firstMsgId: messages[0].id,
+    subject: headers.find(h => h.name === 'Subject')?.value,
+    from: headers.find(h => h.name === 'From')?.value,
+    mimeTree: summarizeParts(msg.payload),
+  });
 }
 
 async function getGmailAccessToken(encryptedRefreshToken, env) {
