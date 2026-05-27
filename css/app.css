@@ -390,10 +390,11 @@ body {
   border-bottom: 1px solid #F1F5F9;
   background: linear-gradient(135deg, #F8FAFC, #fff);
   border-radius: 16px 16px 0 0;
+  flex-shrink: 0;
 }
 .modal-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .modal-body  { padding: 22px; flex: 1; overflow-y: auto; min-height: 0; }
-#modal-content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#modal-content { display: flex; flex-direction: column; flex: 1; min-height: 0; max-height: 100%; }
 .modal-footer {
   display: flex;
   gap: 10px;
@@ -403,6 +404,7 @@ body {
   background: #F8FAFC;
   border-radius: 0 0 16px 16px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 .modal-close {
   background: none;

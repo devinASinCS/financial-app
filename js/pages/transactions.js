@@ -334,6 +334,7 @@ const PageTransactions = (() => {
               ${total >= 0 ? '+' : ''}${Utils.formatTWD(total)}</span>` : ''}
           </div>
           <button class="btn btn-primary" style="padding:7px 16px;font-size:13px;border-radius:10px;touch-action:manipulation;"
+            ontouchend="event.preventDefault();PageTransactions.openAddForDate('${_selected}')"
             onclick="PageTransactions.openAddForDate('${_selected}')">＋記帳</button>
         </div>
         <div style="flex:1;overflow-y:auto;min-height:0;">
