@@ -1267,6 +1267,8 @@ async function fetchStockName(market, symbol) {
         if (name) return name;
       } catch { continue; }
     }
+    // TWSE blocked from Cloudflare IPs — return null so frontend uses its own TWSE call
+    return null;
   }
   const suffixes = market === 'TW' ? ['.TW', '.TWO'] : [''];
   for (const suffix of suffixes) {
