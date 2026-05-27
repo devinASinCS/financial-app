@@ -60,6 +60,11 @@ export default {
         if (!user) return json({ error: 'Unauthorized' }, 401);
         return debugPdfCheck(user, env, json);
       }
+      if (path === '/debug/run-pdf-import' && method === 'GET') {
+        const user = await sessionUser(req, env);
+        if (!user) return json({ error: 'Unauthorized' }, 401);
+        return debugRunPdfImport(user, env, json);
+      }
       if (path === '/auth/me' && method === 'GET') {
         const user = await sessionUser(req, env);
         if (!user) return json({ error: 'Unauthorized' }, 401);
@@ -700,6 +705,66 @@ function _detectBrokerFromEmail(from, subject) {
   if (/masterlink|群益/.test(s)) return '群益證券';
   if (/interactivebrokers|ib\.com/.test(s)) return 'Interactive Brokers';
   return '未知券商';
+}
+
+async function debugRunPdfImport(user, env, json) {
+  const row = await env.DB.prepare('SELECT refresh_token FROM users WHERE id = ?').bind(user.id).first();
+  if (!row?.refresh_token) return json({ error: 'no refresh_token' });
+  const token = await getGmailAccessToken(row.refresh_token, env);
+  if (!token) return json({ error: 'token exchange failed' });
+
+  const processedRow = await env.DB.prepare(
+    "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'stock_pdf_processed_ids'"
+  ).bind(user.id).first();
+  const processedIds = new Set(processedRow ? JSON.parse(processedRow.value) : []);
+
+  const messages = await searchGmailMessages(token, STOCK_PDF_SEARCH);
+  const newMsgs = messages.filter(m => !processedIds.has(m.id));
+
+  const steps = [];
+  let queued = 0;
+
+  for (const { id: msgId } of newMsgs) {
+    const step = { msgId, pdfsFound: 0, pdfsQueued: 0, error: null };
+    try {
+      const msg   = await getGmailMessage(token, msgId);
+      const pdfs  = _findPdfParts(msg.payload);
+      step.pdfsFound = pdfs.length;
+      for (const part of pdfs) {
+        const size = part.body?.size || 0;
+        if (size > MAX_PDF_BYTES) { step.error = `size ${size} > MAX`; continue; }
+        let rawB64;
+        if (part.body.attachmentId) {
+          const attRes = await fetch(
+            `${GMAIL_API}/messages/${msgId}/attachments/${part.body.attachmentId}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (!attRes.ok) { step.error = `attachment fetch ${attRes.status}`; continue; }
+          rawB64 = (await attRes.json()).data;
+        } else {
+          rawB64 = part.body.data;
+        }
+        if (!rawB64) { step.error = 'rawB64 empty'; continue; }
+        step.pdfsQueued++;
+        queued++;
+      }
+    } catch(e) {
+      step.error = e.message;
+    }
+    steps.push(step);
+  }
+
+  // Now actually save
+  let saveError = null;
+  if (queued > 0) {
+    try {
+      await processUserStockPdfs({ id: user.id }, token, env);
+    } catch(e) {
+      saveError = e.message;
+    }
+  }
+
+  return json({ totalFound: messages.length, newUnprocessed: newMsgs.length, queued, saveError, steps });
 }
 
 async function debugPdfCheck(user, env, json) {
