@@ -712,7 +712,7 @@ async function debugPdfCheck(user, env, json) {
   if (!messages.length) return json({ found: 0, query: STOCK_PDF_SEARCH });
 
   const msg = await getGmailMessage(token, messages[0].id);
-  function summarizeParts(payload, depth = 0) {
+  function summarizeParts(payload) {
     if (!payload) return null;
     const node = {
       mimeType: payload.mimeType,
@@ -721,15 +721,40 @@ async function debugPdfCheck(user, env, json) {
       hasAttachmentId: !!payload.body?.attachmentId,
       hasBodyData: !!(payload.body?.data),
     };
-    if (payload.parts?.length) node.parts = payload.parts.map(p => summarizeParts(p, depth + 1));
+    if (payload.parts?.length) node.parts = payload.parts.map(p => summarizeParts(p));
     return node;
   }
   const headers = msg.payload?.headers || [];
+
+  // Try downloading the first PDF attachment found
+  const pdfs = _findPdfParts(msg.payload);
+  let attachmentTest = null;
+  if (pdfs.length > 0) {
+    const part = pdfs[0];
+    try {
+      if (part.body?.attachmentId) {
+        const attRes = await fetch(
+          `${GMAIL_API}/messages/${messages[0].id}/attachments/${part.body.attachmentId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const status = attRes.status;
+        const attData = attRes.ok ? await attRes.json() : null;
+        attachmentTest = { status, dataLen: attData?.data?.length || 0, filename: part.filename };
+      } else if (part.body?.data) {
+        attachmentTest = { status: 'inline', dataLen: part.body.data.length, filename: part.filename };
+      }
+    } catch(e) {
+      attachmentTest = { error: e.message };
+    }
+  }
+
   return json({
     found: messages.length,
     firstMsgId: messages[0].id,
     subject: headers.find(h => h.name === 'Subject')?.value,
     from: headers.find(h => h.name === 'From')?.value,
+    pdfPartsFound: pdfs.length,
+    attachmentTest,
     mimeTree: summarizeParts(msg.payload),
   });
 }
