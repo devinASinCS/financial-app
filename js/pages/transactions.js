@@ -333,7 +333,7 @@ const PageTransactions = (() => {
               color:${total >= 0 ? '#10b981' : '#ef4444'};margin-left:10px;">
               ${total >= 0 ? '+' : ''}${Utils.formatTWD(total)}</span>` : ''}
           </div>
-          <button class="btn btn-primary" style="padding:7px 16px;font-size:13px;border-radius:10px;"
+          <button class="btn btn-primary" style="padding:7px 16px;font-size:13px;border-radius:10px;touch-action:manipulation;"
             onclick="PageTransactions.openAddForDate('${_selected}')">＋記帳</button>
         </div>
         <div style="flex:1;overflow-y:auto;min-height:0;">

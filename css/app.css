@@ -392,7 +392,8 @@ body {
   border-radius: 16px 16px 0 0;
 }
 .modal-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
-.modal-body  { padding: 22px; }
+.modal-body  { padding: 22px; flex: 1; overflow-y: auto; min-height: 0; }
+#modal-content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .modal-footer {
   display: flex;
   gap: 10px;
