@@ -467,19 +467,25 @@ async function handleLegacyAction(req, env, json) {
   if (action === 'clear_stock_pdf_item') {
     if (!user) return json({ ok: false, error: 'Unauthorized' }, 401);
     if (!body.itemId) return json({ ok: false, error: 'itemId required' }, 400);
-    const queue   = await _getPdfQueue(user.id, env);
+    const queue    = await _getPdfQueue(user.id, env);
     const filtered = queue.filter(i => i.id !== body.itemId);
     await _savePdfQueue(user.id, filtered, env);
+    await env.DB.prepare('DELETE FROM user_data WHERE user_id = ?1 AND key = ?2')
+      .bind(user.id, `fm_pdf_item_${body.itemId}`).run();
     return json({ ok: true, removed: queue.length - filtered.length });
   }
 
   if (action === 'clear_stock_pdf_items') {
     if (!user) return json({ ok: false, error: 'Unauthorized' }, 401);
     if (!Array.isArray(body.itemIds)) return json({ ok: false, error: 'itemIds required' }, 400);
-    const queue   = await _getPdfQueue(user.id, env);
-    const idSet   = new Set(body.itemIds);
+    const queue    = await _getPdfQueue(user.id, env);
+    const idSet    = new Set(body.itemIds);
     const filtered = queue.filter(i => !idSet.has(i.id));
     await _savePdfQueue(user.id, filtered, env);
+    for (const id of body.itemIds) {
+      await env.DB.prepare('DELETE FROM user_data WHERE user_id = ?1 AND key = ?2')
+        .bind(user.id, `fm_pdf_item_${id}`).run();
+    }
     return json({ ok: true, removed: queue.length - filtered.length });
   }
 
@@ -488,17 +494,37 @@ async function handleLegacyAction(req, env, json) {
 
 // ── PDF queue helpers (stored per-user in D1) ──────────────────────────────
 async function _getPdfQueue(userId, env) {
-  const row = await env.DB.prepare(
+  const indexRow = await env.DB.prepare(
     "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'fm_pdf_queue'"
   ).bind(userId).first();
-  return row ? JSON.parse(row.value) : [];
+  const index = indexRow ? JSON.parse(indexRow.value) : [];
+  if (!index.length) return [];
+  // Fetch pdfBase64 for each item from its own row (avoids SQLITE_TOOBIG)
+  const result = [];
+  for (const meta of index) {
+    const itemRow = await env.DB.prepare(
+      "SELECT value FROM user_data WHERE user_id = ?1 AND key = ?2"
+    ).bind(userId, `fm_pdf_item_${meta.id}`).first();
+    result.push({ ...meta, pdfBase64: itemRow ? JSON.parse(itemRow.value) : '' });
+  }
+  return result;
 }
 
 async function _savePdfQueue(userId, queue, env) {
+  // Index row stores metadata only — no base64
+  const index = queue.map(({ pdfBase64: _pdf, ...meta }) => meta);
   await env.DB.prepare(`
     INSERT INTO user_data (user_id, key, value, updated_at) VALUES (?1, 'fm_pdf_queue', ?2, ?3)
     ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-  `).bind(userId, JSON.stringify(queue), nowSec()).run();
+  `).bind(userId, JSON.stringify(index), nowSec()).run();
+  // Each PDF stored in its own row
+  for (const item of queue) {
+    if (!item.pdfBase64) continue;
+    await env.DB.prepare(`
+      INSERT INTO user_data (user_id, key, value, updated_at) VALUES (?1, ?2, ?3, ?4)
+      ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `).bind(userId, `fm_pdf_item_${item.id}`, JSON.stringify(item.pdfBase64), nowSec()).run();
+  }
 }
 
 // ── AES-256-GCM encryption ─────────────────────────────────────────────────
