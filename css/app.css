@@ -676,6 +676,7 @@ body {
 }
 
 /* ── Transaction calendar grid — must come last to override mobile normalizer ── */
+.tx-cal-wrap { max-width: 380px; }
 .tx-cal-grid {
   display: grid !important;
   grid-template-columns: repeat(7, 1fr) !important;

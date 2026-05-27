@@ -213,7 +213,7 @@ const PageTransactions = (() => {
     }
 
     return `
-      <div style="padding:6px 10px 5px;">
+      <div class="tx-cal-wrap" style="padding:6px 10px 5px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
           <button onclick="PageTransactions.prevMonth()"
             style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;padding:2px 6px;line-height:1;">‹</button>
