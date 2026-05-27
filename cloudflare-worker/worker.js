@@ -234,9 +234,10 @@ async function sessionUser(req, env) {
 
 // ── Data CRUD (new REST endpoints) ─────────────────────────────────────────
 async function getData(user, env, json) {
+  const placeholders = FM_KEYS.map((_, i) => `?${i + 2}`).join(', ');
   const rows = await env.DB.prepare(
-    'SELECT key, value FROM user_data WHERE user_id = ?'
-  ).bind(user.id).all();
+    `SELECT key, value FROM user_data WHERE user_id = ?1 AND key IN (${placeholders})`
+  ).bind(user.id, ...FM_KEYS).all();
   const data = {};
   for (const r of rows.results) {
     try { data[r.key] = JSON.parse(r.value); } catch {}
