@@ -12,7 +12,7 @@ const Sync = (() => {
   // Download all user data from D1 → localStorage
   async function pull() {
     try {
-      const res = await fetch(`${Auth.getApiUrl()}/api/data`, { credentials: 'include' });
+      const res = await fetch(`${Auth.getApiUrl()}/api/data`, { headers: Auth.authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       // Write via native setItem to avoid triggering our push hook
@@ -35,10 +35,9 @@ const Sync = (() => {
     }
     try {
       await fetch(`${Auth.getApiUrl()}/api/data`, {
-        method:      'PUT',
-        credentials: 'include',
-        headers:     { 'Content-Type': 'application/json' },
-        body:        JSON.stringify(data),
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json', ...Auth.authHeaders() },
+        body:    JSON.stringify(data),
       });
     } catch (e) {
       console.warn('[Sync] push failed:', e.message);

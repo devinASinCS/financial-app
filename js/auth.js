@@ -4,22 +4,38 @@
  */
 const Auth = (() => {
   let _user = null;
+  const SESSION_KEY = 'cashio_sid';
 
   // Auto-detect worker URL: localhost dev vs. production
   const API = (() => {
     const h = window.location.hostname;
     if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:8787';
-    // Replace with your actual deployed worker URL
     return 'https://cashio-worker.jacky90052414.workers.dev';
   })();
 
+  function _getToken() { return localStorage.getItem(SESSION_KEY); }
+
+  function authHeaders() {
+    const t = _getToken();
+    return t ? { 'Authorization': `Bearer ${t}` } : {};
+  }
+
   async function init() {
+    // Pick up session token dropped in URL hash by OAuth callback (Safari-safe)
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const hashToken = hash.get('session');
+    if (hashToken) {
+      localStorage.setItem(SESSION_KEY, hashToken);
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    if (!_getToken()) return null;
     try {
-      const res = await fetch(`${API}/auth/me`, { credentials: 'include' });
+      const res = await fetch(`${API}/auth/me`, { headers: authHeaders() });
       if (res.ok) {
         _user = await res.json();
         return _user;
       }
+      localStorage.removeItem(SESSION_KEY); // expired or invalid
     } catch {}
     return null;
   }
@@ -98,10 +114,14 @@ const Auth = (() => {
     }
   }
 
-  function logout() {
+  async function logout() {
     if (!confirm(`確定要登出 ${_user?.email || ''} 嗎？`)) return;
-    window.location.href = `${API}/auth/logout`;
+    try {
+      await fetch(`${API}/auth/logout`, { method: 'POST', headers: authHeaders() });
+    } catch {}
+    localStorage.removeItem(SESSION_KEY);
+    window.location.reload();
   }
 
-  return { init, getUser, getApiUrl, renderLogin, injectUserBadge, logout };
+  return { init, getUser, getApiUrl, authHeaders, renderLogin, injectUserBadge, logout };
 })();

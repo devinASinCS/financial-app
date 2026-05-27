@@ -172,43 +172,48 @@ async function handleCallback(req, url, env) {
   return new Response(null, {
     status: 302,
     headers: {
-      Location:     env.FRONTEND_URL,
+      Location:     `${env.FRONTEND_URL}#session=${sid}`,
       'Set-Cookie': sessionCookie(sid, SESSION_TTL),
     },
   });
 }
 
 async function handleLogout(req, env) {
-  const sid = getCookie(req, 'session');
+  const bearer = (req.headers.get('Authorization') || '').startsWith('Bearer ')
+    ? req.headers.get('Authorization').slice(7).trim() : null;
+  const sid = getCookie(req, 'session') || bearer;
   if (sid) await env.DB.prepare('DELETE FROM sessions WHERE id = ?').bind(sid).run();
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location:     env.FRONTEND_URL + '#dashboard',
-      'Set-Cookie': sessionCookie('', 0),
-    },
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(req), 'Set-Cookie': sessionCookie('', 0) },
   });
 }
 
 // ── Session resolution ─────────────────────────────────────────────────────
-// Accepts: session cookie, or  Authorization: Bearer <api_key>
+// Accepts: session cookie, Authorization: Bearer <session_id>, or Bearer <api_key>
 async function sessionUser(req, env) {
-  // 1. Try Bearer API key (used by GAS and REST clients)
   const auth = req.headers.get('Authorization') || '';
   if (auth.startsWith('Bearer ')) {
     const key = auth.slice(7).trim();
-    const row = await env.DB.prepare(`
+    // Try API key
+    const apiRow = await env.DB.prepare(`
       SELECT u.id, u.email, u.name, u.picture
       FROM api_keys ak JOIN users u ON ak.user_id = u.id
       WHERE ak.key = ?
     `).bind(key).first();
-    if (row) return row;
+    if (apiRow) return apiRow;
+    // Try session token (used by mobile/Safari where cookies are blocked)
+    const sessRow = await env.DB.prepare(`
+      SELECT u.id, u.email, u.name, u.picture
+      FROM sessions s JOIN users u ON s.user_id = u.id
+      WHERE s.id = ?1 AND s.expires_at > ?2
+    `).bind(key, nowSec()).first();
+    if (sessRow) return sessRow;
   }
 
-  // 2. Try session cookie
+  // Fall back to session cookie (desktop browsers)
   const sid = getCookie(req, 'session');
   if (!sid) return null;
-
   const row = await env.DB.prepare(`
     SELECT u.id, u.email, u.name, u.picture
     FROM sessions s JOIN users u ON s.user_id = u.id

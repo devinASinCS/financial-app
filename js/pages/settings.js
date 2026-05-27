@@ -103,8 +103,7 @@ const PageSettings = (() => {
     try {
       const res  = await fetch(workerUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...Auth.authHeaders() },
         body: JSON.stringify({ action: 'get_stock_pdf_queue' }),
       });
       const json = await res.json();
@@ -206,8 +205,7 @@ const PageSettings = (() => {
       const doneIds = [...new Set(selected.map(t => t._srcId))];
       await fetch(workerUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...Auth.authHeaders() },
         body: JSON.stringify({ action: 'clear_stock_pdf_items', itemIds: doneIds }),
       }).catch(() => {});
       _stockPdfItems = _stockPdfItems.filter(item => !doneIds.includes(item.id));
