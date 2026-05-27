@@ -15,7 +15,9 @@ const Sync = (() => {
       const res = await fetch(`${Auth.getApiUrl()}/api/data`, { headers: Auth.authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
-      // Write via native setItem to avoid triggering our push hook
+      // Clear all fm_* keys first — prevents stale data from a previous user
+      // appearing if this user has no D1 data for a given key
+      for (const key of FM_KEYS) localStorage.removeItem(key);
       for (const [key, value] of Object.entries(data)) {
         _nativeSet(key, JSON.stringify(value));
       }
