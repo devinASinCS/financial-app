@@ -293,7 +293,9 @@ const PageSettings = (() => {
       const action = /買/.test(typeStr) ? 'buy' : 'sell';
       const fee    = parseInt((feeStr || '0').replace(/,/g, ''), 10) || 0;
       const tax    = parseInt((taxStr || '0').replace(/,/g, ''), 10) || 0;
-      const symbol = nameToCode[name] || name;
+      const symbol = nameToCode[name]
+        || Store.getStockTrades('TW').find(t => t.name === name)?.symbol
+        || name;
       const k = `${tradeDate}|${symbol}|${qty}|${price}|${action}`;
       if (seen.has(k)) continue;
       seen.add(k);
