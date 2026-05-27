@@ -636,19 +636,26 @@ async function processUserStockPdfs(user, accessToken, env) {
       const pdfs = _findPdfParts(msg.payload);
       for (const part of pdfs) {
         if ((part.body?.size || 0) > MAX_PDF_BYTES) continue;
-        const attRes  = await fetch(
-          `${GMAIL_API}/messages/${msgId}/attachments/${part.body.attachmentId}`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-        if (!attRes.ok) continue;
-        const attData = await attRes.json();
+        let rawB64;
+        if (part.body.attachmentId) {
+          const attRes = await fetch(
+            `${GMAIL_API}/messages/${msgId}/attachments/${part.body.attachmentId}`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          if (!attRes.ok) continue;
+          const attData = await attRes.json();
+          rawB64 = attData.data;
+        } else {
+          rawB64 = part.body.data;
+        }
+        if (!rawB64) continue;
         queue.push({
           id:        randHex(8),
           broker,
           emailDate: date,
           subject,
           fileName:  part.filename || 'statement.pdf',
-          pdfBase64: attData.data.replace(/-/g, '+').replace(/_/g, '/'),
+          pdfBase64: rawB64.replace(/-/g, '+').replace(/_/g, '/'),
           addedAt:   new Date().toISOString(),
         });
       }
@@ -667,8 +674,10 @@ async function processUserStockPdfs(user, accessToken, env) {
 
 function _findPdfParts(payload, found = []) {
   if (!payload) return found;
-  if ((payload.mimeType === 'application/pdf' || (payload.filename || '').toLowerCase().endsWith('.pdf'))
-      && payload.body?.attachmentId) {
+  const isPdf = payload.mimeType === 'application/pdf'
+    || payload.mimeType === 'application/octet-stream'
+    || (payload.filename || '').toLowerCase().endsWith('.pdf');
+  if (isPdf && (payload.body?.attachmentId || payload.body?.data)) {
     found.push(payload);
   }
   for (const part of (payload.parts || [])) _findPdfParts(part, found);
