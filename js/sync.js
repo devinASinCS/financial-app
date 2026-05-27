@@ -15,9 +15,13 @@ const Sync = (() => {
       const res = await fetch(`${Auth.getApiUrl()}/api/data`, { headers: Auth.authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
-      // Clear all fm_* keys first — prevents stale data from a previous user
-      // appearing if this user has no D1 data for a given key
-      for (const key of FM_KEYS) localStorage.removeItem(key);
+      const userId = Auth.getUser()?.id;
+      // Clear fm_* only on user switch — prevents previous user's data leaking
+      // into a new user's session, while preserving data for the same user
+      if (userId && localStorage.getItem('fm_current_user') !== userId) {
+        for (const key of FM_KEYS) localStorage.removeItem(key);
+        localStorage.setItem('fm_current_user', userId);
+      }
       for (const [key, value] of Object.entries(data)) {
         _nativeSet(key, JSON.stringify(value));
       }
