@@ -6,7 +6,7 @@
 const Sync = (() => {
   const FM_KEYS = [
     'fm_transactions', 'fm_banks', 'fm_stock_trades', 'fm_dividends',
-    'fm_subscriptions', 'fm_events', 'fm_settings',
+    'fm_subscriptions', 'fm_expense_events', 'fm_settings',
   ];
 
   // Download all user data from D1 → localStorage
@@ -25,17 +25,14 @@ const Sync = (() => {
         for (const key of FM_KEYS) localStorage.removeItem(key);
         localStorage.setItem('fm_current_user', userId);
       }
-      // Free space: remove non-synced fm_* blobs (PDF queue, price cache) before writing
+      // Free space: remove PDF item blobs (fm_pdf_item_*) before writing
       const toRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && k.startsWith('fm_') && !FM_KEYS.includes(k) &&
-            k !== 'fm_current_user' && k !== 'fm_last_modified') {
-          toRemove.push(k);
-        }
+        if (k && k.startsWith('fm_pdf_item_')) toRemove.push(k);
       }
       toRemove.forEach(k => localStorage.removeItem(k));
-      if (toRemove.length) console.log('[Sync] freed localStorage keys:', toRemove);
+      if (toRemove.length) console.log('[Sync] freed PDF blobs:', toRemove);
 
       const keys = Object.keys(data);
       for (const [key, value] of Object.entries(data)) {

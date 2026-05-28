@@ -20,7 +20,7 @@ const SESSION_TTL    = 30 * 24 * 60 * 60; // 30 days in seconds
 
 const FM_KEYS = [
   'fm_transactions', 'fm_banks', 'fm_stock_trades', 'fm_dividends',
-  'fm_subscriptions', 'fm_events', 'fm_settings',
+  'fm_subscriptions', 'fm_expense_events', 'fm_settings',
 ];
 
 const GMAIL_SEARCH = 'subject:(消費通知 OR 刷卡通知 OR 消費提醒 OR 信用卡消費 OR 消費明細 OR 消費彙整) newer_than:3d';
