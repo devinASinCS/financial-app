@@ -459,6 +459,24 @@ const PageUSStocks = (() => {
     Modal.openImport(MARKET, _refresh);
   }
 
+  function toggleHoldingTrades(symbol) {
+    const detail = document.getElementById('us-holding-trades-' + symbol);
+    const btn    = document.getElementById('us-holding-arrow-' + symbol);
+    if (!detail) return;
+    const isOpen = detail.style.display !== 'none';
+    detail.style.display = isOpen ? 'none' : '';
+    if (btn) btn.textContent = isOpen ? '▼ 明細' : '▲ 收起';
+  }
+
+  function toggleTradeDetail(id) {
+    const detail = document.getElementById('us-trade-detail-' + id);
+    const btn    = document.getElementById('us-trade-arrow-' + id);
+    if (!detail) return;
+    const isOpen = detail.style.display !== 'none';
+    detail.style.display = isOpen ? 'none' : '';
+    if (btn) btn.textContent = isOpen ? '▼' : '▲';
+  }
+
   function toggleDivGroup(symbol) {
     const detail = document.getElementById('us-div-detail-' + symbol);
     const arrow  = document.getElementById('us-div-arrow-' + symbol);
