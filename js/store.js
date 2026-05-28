@@ -605,5 +605,6 @@ const Store = (() => {
     getUpcomingTWDivs, saveUpcomingTWDivs,
     DEFAULT_EXCHANGE_RATES, getExchangeRates, saveExchangeRates, getExchangeRate,
     getDefaultBankId, setDefaultBankId,
+    getEvents, addEvent, updateEvent, deleteEvent, getEventTransactions,
   };
 })();
