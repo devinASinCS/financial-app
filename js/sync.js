@@ -25,6 +25,18 @@ const Sync = (() => {
         for (const key of FM_KEYS) localStorage.removeItem(key);
         localStorage.setItem('fm_current_user', userId);
       }
+      // Free space: remove non-synced fm_* blobs (PDF queue, price cache) before writing
+      const toRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('fm_') && !FM_KEYS.includes(k) &&
+            k !== 'fm_current_user' && k !== 'fm_last_modified') {
+          toRemove.push(k);
+        }
+      }
+      toRemove.forEach(k => localStorage.removeItem(k));
+      if (toRemove.length) console.log('[Sync] freed localStorage keys:', toRemove);
+
       const keys = Object.keys(data);
       for (const [key, value] of Object.entries(data)) {
         _nativeSet(key, JSON.stringify(value));
