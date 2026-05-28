@@ -60,7 +60,7 @@ const PageSettings = (() => {
     if (!confirm('再次確認：確定要清除所有資料？')) return;
 
     ['fm_transactions','fm_stock_trades','fm_dividends','fm_banks',
-     'fm_subscriptions','fm_dca_plans','fm_debit_log'].forEach(k => localStorage.removeItem(k));
+     'fm_subscriptions','fm_debit_log'].forEach(k => localStorage.removeItem(k));
     Utils.showToast('所有資料已清除');
     setTimeout(() => PageSettings.render(), 300);
   }
@@ -451,12 +451,11 @@ const PageSettings = (() => {
     const divs   = Store.getDividends();
     const banks  = Store.getBanks();
     const subs   = Store.getSubscriptions();
-    const dcas   = Store.getDcaPlans();
     const totalCards = banks.reduce((s, b) => s + (b.creditCards || []).length, 0);
 
     let totalBytes = 0;
     ['fm_transactions','fm_stock_trades','fm_dividends','fm_banks',
-     'fm_subscriptions','fm_dca_plans','fm_debit_log'].forEach(k => {
+     'fm_subscriptions','fm_debit_log'].forEach(k => {
       totalBytes += (localStorage.getItem(k) || '').length * 2;
     });
     const sizeKB = (totalBytes / 1024).toFixed(1);

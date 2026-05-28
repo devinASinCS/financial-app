@@ -27,7 +27,7 @@ const Store = (() => {
     banks:          'fm_banks',
     subscriptions:  'fm_subscriptions',
     debitLog:       'fm_debit_log',
-    dcaPlans:       'fm_dca_plans',
+
     stockPrices:    'fm_stock_prices',
     upcomingTWDivs: 'fm_tw_upcoming_divs',
     events:         'fm_expense_events',
@@ -261,48 +261,6 @@ const Store = (() => {
 
   function deleteSubscription(id) {
     save(KEYS.subscriptions, getSubscriptions().filter(s => s.id !== id));
-  }
-
-  // ── DCA Plan CRUD ───────────────────────────────────────────────
-  /**
-   * DCA plan: invest a fixed amount on a set day each month.
-   * { id, market, symbol, name, monthlyAmount, executionDay,
-   *   active, lastExecutedMonth, bankId, cardId, note }
-   */
-  function getDcaPlans(market = null) {
-    const all = load(KEYS.dcaPlans, []);
-    return market ? all.filter(p => p.market === market) : all;
-  }
-
-  function addDcaPlan(plan) {
-    const list = getDcaPlans();
-    const item = { id: uid(), active: true, lastExecutedMonth: null, ...plan };
-    list.push(item);
-    save(KEYS.dcaPlans, list);
-    return item;
-  }
-
-  function updateDcaPlan(id, updates) {
-    const list = getDcaPlans().map(p => p.id === id ? { ...p, ...updates } : p);
-    save(KEYS.dcaPlans, list);
-  }
-
-  function deleteDcaPlan(id) {
-    save(KEYS.dcaPlans, getDcaPlans().filter(p => p.id !== id));
-  }
-
-  /**
-   * Get DCA plans that are due today (execution day passed, not yet executed this month).
-   */
-  function getPendingDcaPlans(market = null) {
-    const today = new Date();
-    const todayDay = today.getDate();
-    const monthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-    return getDcaPlans(market).filter(p =>
-      p.active &&
-      p.lastExecutedMonth !== monthKey &&
-      todayDay >= p.executionDay
-    );
   }
 
   // ── Auto Credit Card Debit ──────────────────────────────────────
@@ -588,7 +546,7 @@ const Store = (() => {
       dividends:     load(KEYS.dividends, []),
       banks:         load(KEYS.banks, []),
       subscriptions: load(KEYS.subscriptions, []),
-      dcaPlans:      load(KEYS.dcaPlans, []),
+
       debitLog:      load(KEYS.debitLog, {}),
       events:        load(KEYS.events, []),
     };
@@ -610,7 +568,6 @@ const Store = (() => {
       if (Array.isArray(obj.dividends))     save(KEYS.dividends,     obj.dividends);
       if (Array.isArray(obj.banks))         save(KEYS.banks,         obj.banks);
       if (Array.isArray(obj.subscriptions)) save(KEYS.subscriptions, obj.subscriptions);
-      if (Array.isArray(obj.dcaPlans))      save(KEYS.dcaPlans,      obj.dcaPlans);
       if (obj.debitLog && typeof obj.debitLog === 'object') save(KEYS.debitLog, obj.debitLog);
       if (Array.isArray(obj.events))        save(KEYS.events,        obj.events);
       return {
@@ -621,7 +578,7 @@ const Store = (() => {
           dividends:     (obj.dividends     || []).length,
           banks:         (obj.banks         || []).length,
           subscriptions: (obj.subscriptions || []).length,
-          dcaPlans:      (obj.dcaPlans      || []).length,
+
         }
       };
     } catch (e) {
@@ -639,7 +596,7 @@ const Store = (() => {
     getBanks, addBank, updateBank, deleteBank,
     addCreditCard, updateCreditCard, deleteCreditCard,
     getSubscriptions, addSubscription, updateSubscription, deleteSubscription,
-    getDcaPlans, addDcaPlan, updateDcaPlan, deleteDcaPlan, getPendingDcaPlans,
+
     processAutoDebits, getPendingDebits,
     getHoldings, getRealizedTrades, getPnLTimeline,
     getMonthlySummary,

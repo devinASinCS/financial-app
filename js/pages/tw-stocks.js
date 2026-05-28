@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Taiwan Stocks page
  */
 const PageTWStocks = (() => {
@@ -8,8 +8,6 @@ const PageTWStocks = (() => {
   let _autoFetchDone  = false;
 
   function render() {
-    const pendingDca = Store.getPendingDcaPlans(MARKET);
-
     document.getElementById('app-content').innerHTML = `
       <div class="page-header">
         <div>
@@ -19,19 +17,6 @@ const PageTWStocks = (() => {
         <div style="display:flex;gap:8px;" id="tw-action-btns"></div>
       </div>
 
-      ${pendingDca.length > 0 ? `
-        <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
-          <span style="font-size:18px;">🔔</span>
-          <div style="flex:1;">
-            <strong style="color:#1D4ED8;">定期定額待執行</strong>
-            <div style="font-size:13px;color:#1E40AF;margin-top:2px;">
-              ${pendingDca.map(p => `${p.symbol} ${p.name}（${Utils.formatTWD(p.monthlyAmount)}/月）`).join('、')}
-            </div>
-          </div>
-          <button class="btn btn-primary btn-sm" onclick="PageTWStocks.switchTab('dca')">前往執行</button>
-        </div>
-      ` : ''}
-
       <!-- Summary Cards -->
       <div class="stock-summary-grid" style="margin-bottom:16px;" id="tw-summary-cards"></div>
 
@@ -40,9 +25,6 @@ const PageTWStocks = (() => {
         <button class="tab-btn ${_activeTab==='holdings'?'active':''}" onclick="PageTWStocks.switchTab('holdings')">持股</button>
         <button class="tab-btn ${_activeTab==='trades'?'active':''}" onclick="PageTWStocks.switchTab('trades')">交易</button>
         <button class="tab-btn ${_activeTab==='dividends'?'active':''}" onclick="PageTWStocks.switchTab('dividends')">除權息</button>
-        <button class="tab-btn ${_activeTab==='dca'?'active':''}" onclick="PageTWStocks.switchTab('dca')">
-          定額${pendingDca.length > 0 ? ` <span style="background:#EF4444;color:white;border-radius:10px;padding:1px 6px;font-size:10px;">${pendingDca.length}</span>` : ''}
-        </button>
         <button class="tab-btn ${_activeTab==='pnl'?'active':''}" onclick="PageTWStocks.switchTab('pnl')">損益</button>
       </div>
 
@@ -125,7 +107,7 @@ const PageTWStocks = (() => {
       trades:    `<button class="btn btn-secondary" onclick="PageTWStocks.openImport()">📥 匯入</button>
                   <button class="btn btn-primary" onclick="PageTWStocks.openAddTrade()"><i class="fa-solid fa-plus fa-xs"></i> 新增交易</button>`,
       dividends: `<button class="btn btn-primary" onclick="PageTWStocks.openAddDividend()"><i class="fa-solid fa-plus fa-xs"></i> 新增除權息</button>`,
-      dca:       `<button class="btn btn-primary" onclick="PageTWStocks.openAddDca()"><i class="fa-solid fa-plus fa-xs"></i> 新增定期定額</button>`,
+
       pnl:       '',
     };
     document.getElementById('tw-action-btns').innerHTML = btns[_activeTab] || '';
@@ -144,7 +126,7 @@ const PageTWStocks = (() => {
       case 'holdings':  _renderHoldings(); break;
       case 'trades':    _renderTrades(); break;
       case 'dividends': _renderDividends(); break;
-      case 'dca':       _renderDca(); break;
+
       case 'pnl':       _renderPnL(); break;
     }
   }
@@ -325,7 +307,7 @@ const PageTWStocks = (() => {
                     <span style="color:#1d4ed8;">${t.symbol}</span>
                     <span style="font-weight:400;color:#374151;font-size:12px;"> ${t.name}</span>
                   </div>
-                  <div style="font-size:11px;color:#94a3b8;">${Utils.formatDate(t.date)}${t.source === 'dca' ? ' · 📅DCA' : ''}</div>
+                  <div style="font-size:11px;color:#94a3b8;">${Utils.formatDate(t.date)}</div>
                 </div>
                 <div style="text-align:right;flex-shrink:0;">
                   <div style="font-size:14px;font-weight:700;color:${t.action === 'buy' ? '#ef4444' : '#10b981'};">
@@ -433,84 +415,6 @@ const PageTWStocks = (() => {
     `;
   }
 
-  // ── DCA Tab ─────────────────────────────────────────────────────
-  function _renderDca() {
-    const plans      = Store.getDcaPlans(MARKET);
-    const pending    = Store.getPendingDcaPlans(MARKET);
-    const pendingIds = new Set(pending.map(p => p.id));
-    const container  = document.getElementById('tw-tab-content');
-
-    if (plans.length === 0) {
-      container.innerHTML = `
-        <div class="card">
-          <div class="empty-state">
-            <div class="empty-state-icon">📅</div>
-            <div class="empty-state-text">尚未設定定期定額計畫</div>
-            <p style="font-size:13px;color:#6B7280;max-width:360px;text-align:center;margin:8px auto 0;">
-              設定後，系統會在每月執行日提醒你，並根據你輸入的成交價格自動計算張數。
-            </p>
-            <button class="btn btn-primary" style="margin-top:12px;" onclick="PageTWStocks.openAddDca()"><i class="fa-solid fa-plus fa-xs"></i> 新增定期定額</button>
-          </div>
-        </div>`;
-      return;
-    }
-
-    const today           = new Date();
-    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,'0')}`;
-
-    container.innerHTML = `
-      <div class="card">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>股票</th>
-              <th class="text-right">每月投入</th>
-              <th>執行日</th>
-              <th>本月狀態</th>
-              <th class="text-center">啟用</th>
-              <th class="text-center">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${plans.map(p => {
-              const isDue  = pendingIds.has(p.id);
-              const isDone = p.lastExecutedMonth === currentMonthKey;
-              return `
-                <tr>
-                  <td>
-                    <div style="font-weight:600;color:#1D4ED8;">${p.symbol}</div>
-                    <div style="font-size:12px;color:#6B7280;">${p.name}</div>
-                  </td>
-                  <td class="text-right" style="font-weight:600;">${Utils.formatTWD(p.monthlyAmount)}</td>
-                  <td>每月 ${p.executionDay} 日</td>
-                  <td>
-                    ${!p.active
-                      ? '<span style="color:#9CA3AF;font-size:12px;">已停用</span>'
-                      : isDone
-                        ? '<span style="color:#10B981;font-size:12px;">✓ 本月已執行</span>'
-                        : isDue
-                          ? '<span style="color:#F59E0B;font-size:12px;font-weight:600;">⚡ 待執行</span>'
-                          : `<span style="color:#9CA3AF;font-size:12px;">${p.executionDay} 日執行</span>`
-                    }
-                  </td>
-                  <td class="text-center">
-                    <input type="checkbox" ${p.active ? 'checked' : ''}
-                      onchange="PageTWStocks.toggleDca('${p.id}', this.checked)"
-                      style="width:15px;height:15px;cursor:pointer;">
-                  </td>
-                  <td class="text-center">
-                    ${isDue ? `<button class="btn btn-primary btn-sm" onclick="PageTWStocks.executeDca('${p.id}')" style="margin-right:4px;">執行</button>` : ''}
-                    <button class="btn btn-sm btn-ghost gap-1" onclick="PageTWStocks.openEditDca('${p.id}')">編輯</button>
-                    <button class="btn btn-sm btn-ghost text-error gap-1" style="margin-left:4px;" onclick="PageTWStocks.delDca('${p.id}')">刪除</button>
-                  </td>
-                </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-  }
-
   // ── P&L Tab ─────────────────────────────────────────────────────
   function _renderPnL() {
     const timeline  = Store.getPnLTimeline(MARKET);
@@ -590,33 +494,6 @@ const PageTWStocks = (() => {
     Modal.openImport(MARKET, _refresh);
   }
 
-  function openAddDca() {
-    Modal.openDcaPlan(MARKET, null, _refresh);
-  }
-
-  function openEditDca(id) {
-    const plan = Store.getDcaPlans().find(p => p.id === id);
-    if (plan) Modal.openDcaPlan(MARKET, plan, _refresh);
-  }
-
-  function delDca(id) {
-    if (!Utils.confirm('確定刪除此定期定額計畫？')) return;
-    Store.deleteDcaPlan(id);
-    Utils.showToast('已刪除');
-    _refresh();
-  }
-
-  function toggleDca(id, active) {
-    Store.updateDcaPlan(id, { active });
-    Utils.showToast(active ? '已啟用' : '已停用');
-    _renderDca();
-  }
-
-  function executeDca(id) {
-    const plan = Store.getDcaPlans().find(p => p.id === id);
-    if (plan) Modal.openDcaExecute(plan, _refresh);
-  }
-
   function toggleHoldingTrades(symbol) {
     const detail = document.getElementById('tw-holding-trades-' + symbol);
     const btn    = document.getElementById('tw-holding-arrow-' + symbol);
@@ -688,7 +565,6 @@ const PageTWStocks = (() => {
     openAddTrade, openEditTrade, delTrade,
     openAddDividend, openAddDividendFor, openEditDividend, delDividend,
     openImport,
-    openAddDca, openEditDca, delDca, toggleDca, executeDca,
     toggleHoldingTrades, toggleTradeDetail, toggleDivGroup,
     refreshPrices,
   };
