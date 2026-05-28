@@ -13,7 +13,10 @@ const Sync = (() => {
   async function pull() {
     try {
       const res = await fetch(`${Auth.getApiUrl()}/api/data`, { headers: Auth.authHeaders() });
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.warn('[Sync] pull failed: HTTP', res.status);
+        return { ok: false, status: res.status };
+      }
       const data = await res.json();
       const userId = Auth.getUser()?.id;
       // Clear fm_* only on user switch — prevents previous user's data leaking
@@ -22,11 +25,15 @@ const Sync = (() => {
         for (const key of FM_KEYS) localStorage.removeItem(key);
         localStorage.setItem('fm_current_user', userId);
       }
+      const keys = Object.keys(data);
       for (const [key, value] of Object.entries(data)) {
         _nativeSet(key, JSON.stringify(value));
       }
+      console.log('[Sync] pull ok — keys:', keys);
+      return { ok: true, keys };
     } catch (e) {
       console.warn('[Sync] pull failed:', e.message);
+      return { ok: false, error: e.message };
     }
   }
 
@@ -40,14 +47,27 @@ const Sync = (() => {
       }
     }
     try {
-      await fetch(`${Auth.getApiUrl()}/api/data`, {
+      const res = await fetch(`${Auth.getApiUrl()}/api/data`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json', ...Auth.authHeaders() },
         body:    JSON.stringify(data),
       });
+      if (!res.ok) {
+        console.warn('[Sync] push failed: HTTP', res.status);
+        return { ok: false, status: res.status };
+      }
+      console.log('[Sync] push ok');
+      return { ok: true };
     } catch (e) {
       console.warn('[Sync] push failed:', e.message);
+      return { ok: false, error: e.message };
     }
+  }
+
+  async function forceSync() {
+    const pushResult = await push();
+    const pullResult = await pull();
+    return { push: pushResult, pull: pullResult };
   }
 
   // ── Auto-push on any fm_* localStorage mutation ────────────────────────
@@ -62,5 +82,5 @@ const Sync = (() => {
     }
   };
 
-  return { pull, push };
+  return { pull, push, forceSync };
 })();

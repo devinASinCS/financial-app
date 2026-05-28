@@ -513,6 +513,12 @@ const PageSettings = (() => {
             <span>登入即同步，無需任何額外設定。信用卡消費通知每 15 分鐘自動從 Gmail 匯入。</span>
           </div>
         </div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="PageSettings.forceSync()">
+            <i class="fa-solid fa-rotate fa-xs"></i> 立即同步
+          </button>
+          <span id="sync-status" style="font-size:12px;color:#6b7280;"></span>
+        </div>
         ${_renderEmailImportLog()}
       </div>
 
@@ -597,10 +603,31 @@ const PageSettings = (() => {
     // Load API keys asynchronously after DOM is ready
   }
 
+  async function forceSync() {
+    const btn = document.querySelector('[onclick="PageSettings.forceSync()"]');
+    const status = document.getElementById('sync-status');
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = '同步中…';
+    const result = await Sync.forceSync();
+    if (btn) btn.disabled = false;
+    const pushOk = result.push?.ok;
+    const pullOk = result.pull?.ok;
+    const keys   = result.pull?.keys || [];
+    if (pushOk && pullOk) {
+      if (status) status.textContent = `✓ 同步成功（拉取 ${keys.length} 個資料鍵）`;
+      Utils.showToast(`同步完成，已拉取 ${keys.length} 個資料鍵`);
+      render();
+    } else {
+      const err = result.push?.status || result.pull?.status || result.pull?.error || '未知錯誤';
+      if (status) status.textContent = `✗ 同步失敗：${err}`;
+      Utils.showToast(`同步失敗：${err}`);
+    }
+  }
+
   return {
     render,
     exportJSON, triggerImport, clearAllData,
     fetchStockPdfQueue, parseAndPreviewPdfs, toggleStockTrade, importSelectedStockTrades,
-    setDefaultBank,
+    setDefaultBank, forceSync,
   };
 })();
