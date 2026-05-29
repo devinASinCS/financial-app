@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - 'cloudflare-worker/**'
+  workflow_dispatch:
 
 jobs:
   deploy:
