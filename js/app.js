@@ -126,7 +126,7 @@
       '<div class="flex items-center justify-center py-32">' +
       '<span class="loading loading-spinner loading-lg text-primary"></span></div>';
 
-    await Sync.pull();
+    await Sync.forceSync(); // push local first so unsynced data isn't lost on pull
 
     updateSidebarDate();
     seedDemoData();

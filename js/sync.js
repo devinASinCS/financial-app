@@ -57,9 +57,10 @@ const Sync = (() => {
     }
     try {
       const res = await fetch(`${Auth.getApiUrl()}/api/data`, {
-        method:  'PUT',
-        headers: { 'Content-Type': 'application/json', ...Auth.authHeaders() },
-        body:    JSON.stringify(data),
+        method:   'PUT',
+        headers:  { 'Content-Type': 'application/json', ...Auth.authHeaders() },
+        body:     JSON.stringify(data),
+        keepalive: true, // survives page close before debounce fires
       });
       if (!res.ok) {
         console.warn('[Sync] push failed: HTTP', res.status);
