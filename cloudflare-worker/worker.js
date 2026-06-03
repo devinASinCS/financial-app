@@ -81,6 +81,11 @@ export default {
         if (!user) return json({ error: 'Unauthorized' }, 401);
         return importTx(user, req, env, json);
       }
+      if (path === '/api/import-email-now' && method === 'POST') {
+        const user = await sessionUser(req, env);
+        if (!user) return json({ error: 'Unauthorized' }, 401);
+        return importEmailNow(user, env, json);
+      }
       if (path === '/api/apikey') {
         const user = await sessionUser(req, env);
         if (!user) return json({ error: 'Unauthorized' }, 401);
@@ -267,6 +272,28 @@ async function importTx(user, req, env, json) {
   }
   const count = await _mergeTx(user.id, transactions, env);
   return json({ ok: true, imported: count });
+}
+
+// ── Manual email import trigger ────────────────────────────────────────────
+async function importEmailNow(user, env, json) {
+  const row = await env.DB.prepare('SELECT refresh_token FROM users WHERE id = ?').bind(user.id).first();
+  if (!row?.refresh_token) return json({ ok: false, error: 'no_token' }, 400);
+  const token = await getGmailAccessToken(row.refresh_token, env);
+  if (!token) return json({ ok: false, error: 'token_refresh_failed' }, 400);
+  // Clear processed IDs so past emails get re-scanned (safe: _mergeTx deduplicates by tx ID)
+  await env.DB.prepare(
+    "DELETE FROM user_data WHERE user_id = ?1 AND key = 'email_processed_ids'"
+  ).bind(user.id).run();
+  const before = await env.DB.prepare(
+    "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'fm_transactions'"
+  ).bind(user.id).first();
+  const beforeCount = before ? JSON.parse(before.value).filter(t => t.source === 'email_import').length : 0;
+  await processUserEmails(user, token, env);
+  const after = await env.DB.prepare(
+    "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'fm_transactions'"
+  ).bind(user.id).first();
+  const afterCount = after ? JSON.parse(after.value).filter(t => t.source === 'email_import').length : 0;
+  return json({ ok: true, imported: afterCount - beforeCount, total: afterCount });
 }
 
 async function _mergeTx(userId, newTxList, env) {

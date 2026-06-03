@@ -60,8 +60,8 @@ const PageSettings = (() => {
     if (!confirm('再次確認：確定要清除所有資料？')) return;
 
     ['fm_transactions','fm_stock_trades','fm_dividends','fm_banks',
-     'fm_subscriptions','fm_debit_log'].forEach(k => localStorage.removeItem(k));
-    Sync.push(); // sync deletion to D1 immediately (removeItem bypasses auto-push)
+     'fm_subscriptions','fm_debit_log'].forEach(k => localStorage.setItem(k, '[]'));
+    Sync.push(); // sync empty arrays to D1 immediately
     Utils.showToast('所有資料已清除');
     setTimeout(() => PageSettings.render(), 300);
   }
@@ -518,6 +518,9 @@ const PageSettings = (() => {
           <button class="btn btn-secondary btn-sm" onclick="PageSettings.forceSync()">
             <i class="fa-solid fa-rotate fa-xs"></i> 立即同步
           </button>
+          <button class="btn btn-secondary btn-sm" onclick="PageSettings.triggerEmailImport()">
+            <i class="fa-solid fa-envelope-open-text fa-xs"></i> 立即匯入信用卡郵件
+          </button>
           <span id="sync-status" style="font-size:12px;color:#6b7280;"></span>
         </div>
         ${_renderEmailImportLog()}
@@ -625,10 +628,33 @@ const PageSettings = (() => {
     }
   }
 
+  async function triggerEmailImport() {
+    const btn = document.querySelector('[onclick="PageSettings.triggerEmailImport()"]');
+    const status = document.getElementById('sync-status');
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = '掃描 Gmail 中…';
+    try {
+      const res  = await fetch(`${Auth.getApiUrl()}/api/import-email-now`, {
+        method: 'POST', headers: Auth.authHeaders(),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'failed');
+      if (status) status.textContent = `✓ 匯入完成：新增 ${data.imported} 筆，共 ${data.total} 筆`;
+      Utils.showToast(`信用卡郵件匯入：新增 ${data.imported} 筆`);
+      await Sync.pull();
+      render();
+    } catch (e) {
+      if (status) status.textContent = `✗ 匯入失敗：${e.message}`;
+      Utils.showToast(`匯入失敗：${e.message}`);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   return {
     render,
     exportJSON, triggerImport, clearAllData,
     fetchStockPdfQueue, parseAndPreviewPdfs, toggleStockTrade, importSelectedStockTrades,
-    setDefaultBank, forceSync,
+    setDefaultBank, forceSync, triggerEmailImport,
   };
 })();
