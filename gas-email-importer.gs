@@ -558,6 +558,7 @@ function mapCategory(merchant, categoryHint) {
 
 function buildTx(amount, merchant, date, bankName, categoryHint) {
   return {
+    id:            new Date().getTime().toString(36) + Math.random().toString(36).slice(2, 8),
     date:          date,
     type:          'expense',
     amount:        amount,

@@ -36,7 +36,17 @@ const Sync = (() => {
 
       const keys = Object.keys(data);
       for (const [key, value] of Object.entries(data)) {
-        _nativeSet(key, JSON.stringify(value));
+        if (key === 'fm_transactions' && Array.isArray(value)) {
+          // Merge: union local + D1 by ID so server-added email imports aren't lost
+          const local = JSON.parse(localStorage.getItem('fm_transactions') || '[]');
+          const byId = new Map(local.filter(t => t.id).map(t => [t.id, t]));
+          for (const tx of value) {
+            if (tx.id && !byId.has(tx.id)) byId.set(tx.id, tx);
+          }
+          _nativeSet(key, JSON.stringify([...byId.values()]));
+        } else {
+          _nativeSet(key, JSON.stringify(value));
+        }
       }
       console.log('[Sync] pull ok — keys:', keys);
       return { ok: true, keys };
@@ -75,8 +85,8 @@ const Sync = (() => {
   }
 
   async function forceSync() {
-    const pushResult = await push();
     const pullResult = await pull();
+    const pushResult = await push();
     return { push: pushResult, pull: pullResult };
   }
 
