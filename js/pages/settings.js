@@ -61,6 +61,7 @@ const PageSettings = (() => {
 
     ['fm_transactions','fm_stock_trades','fm_dividends','fm_banks',
      'fm_subscriptions','fm_debit_log'].forEach(k => localStorage.removeItem(k));
+    Sync.push(); // sync deletion to D1 immediately (removeItem bypasses auto-push)
     Utils.showToast('所有資料已清除');
     setTimeout(() => PageSettings.render(), 300);
   }
