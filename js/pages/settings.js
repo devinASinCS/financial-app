@@ -59,7 +59,7 @@ const PageSettings = (() => {
     if (!confirm('⚠️ 警告：這將永久刪除所有資料，包括收支記錄、股票交易、銀行設定等。\n\n此操作無法復原，確定要清除所有資料嗎？')) return;
     if (!confirm('再次確認：確定要清除所有資料？')) return;
 
-    ['fm_transactions','fm_stock_trades','fm_dividends','fm_banks',
+    ['fm_transactions','fm_deleted_tx_ids','fm_stock_trades','fm_dividends','fm_banks',
      'fm_subscriptions','fm_debit_log'].forEach(k => localStorage.setItem(k, '[]'));
     Sync.push(); // sync empty arrays to D1 immediately
     Utils.showToast('所有資料已清除');
@@ -644,8 +644,10 @@ const PageSettings = (() => {
       await Sync.pull();
       render();
     } catch (e) {
-      if (status) status.textContent = `✗ 匯入失敗：${e.message}`;
-      Utils.showToast(`匯入失敗：${e.message}`);
+      const isAuthErr = /gmail_auth_error/.test(e.message);
+      const msg = isAuthErr ? '請重新登入以授權 Gmail 讀取權限' : e.message;
+      if (status) status.textContent = `✗ 匯入失敗：${msg}`;
+      Utils.showToast(`匯入失敗：${msg}`);
     } finally {
       if (btn) btn.disabled = false;
     }

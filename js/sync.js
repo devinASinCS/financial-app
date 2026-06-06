@@ -5,7 +5,7 @@
  */
 const Sync = (() => {
   const FM_KEYS = [
-    'fm_transactions', 'fm_banks', 'fm_stock_trades', 'fm_dividends',
+    'fm_transactions', 'fm_deleted_tx_ids', 'fm_banks', 'fm_stock_trades', 'fm_dividends',
     'fm_subscriptions', 'fm_expense_events', 'fm_settings',
   ];
 
@@ -37,11 +37,13 @@ const Sync = (() => {
       const keys = Object.keys(data);
       for (const [key, value] of Object.entries(data)) {
         if (key === 'fm_transactions' && Array.isArray(value)) {
-          // Merge: union local + D1 by ID so server-added email imports aren't lost
+          // Merge: union local + D1 by ID so server-added email imports aren't lost.
+          // Skip any D1 tx whose ID is tombstoned (user explicitly deleted it).
           const local = JSON.parse(localStorage.getItem('fm_transactions') || '[]');
+          const tombstones = new Set(JSON.parse(localStorage.getItem('fm_deleted_tx_ids') || '[]'));
           const byId = new Map(local.filter(t => t.id).map(t => [t.id, t]));
           for (const tx of value) {
-            if (tx.id && !byId.has(tx.id)) byId.set(tx.id, tx);
+            if (tx.id && !byId.has(tx.id) && !tombstones.has(tx.id)) byId.set(tx.id, tx);
           }
           _nativeSet(key, JSON.stringify([...byId.values()]));
         } else {

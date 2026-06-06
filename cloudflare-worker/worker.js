@@ -19,7 +19,7 @@ const GOOGLE_PROFILE = 'https://www.googleapis.com/oauth2/v3/userinfo';
 const SESSION_TTL    = 30 * 24 * 60 * 60; // 30 days in seconds
 
 const FM_KEYS = [
-  'fm_transactions', 'fm_banks', 'fm_stock_trades', 'fm_dividends',
+  'fm_transactions', 'fm_deleted_tx_ids', 'fm_banks', 'fm_stock_trades', 'fm_dividends',
   'fm_subscriptions', 'fm_expense_events', 'fm_settings',
 ];
 
@@ -897,6 +897,7 @@ async function getGmailAccessToken(encryptedRefreshToken, env) {
 async function searchGmailMessages(accessToken, query) {
   const url = `${GMAIL_API}/messages?q=${encodeURIComponent(query)}&maxResults=50`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (res.status === 401 || res.status === 403) throw new Error(`gmail_auth_error:${res.status}`);
   if (!res.ok) return [];
   const data = await res.json();
   return data.messages || [];

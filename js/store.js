@@ -22,6 +22,7 @@ const Store = (() => {
   // ── Keys ────────────────────────────────────────────────────────
   const KEYS = {
     transactions:   'fm_transactions',
+    deletedTxIds:   'fm_deleted_tx_ids',
     stockTrades:    'fm_stock_trades',
     dividends:      'fm_dividends',
     banks:          'fm_banks',
@@ -106,6 +107,9 @@ const Store = (() => {
     const tx = getTransactions().find(t => t.id === id);
     save(KEYS.transactions, getTransactions().filter(t => t.id !== id));
     _adjustBankForTransfer(tx, true);                // reverse effect
+    // Tombstone: prevent pull() merge from restoring this tx from D1
+    const deleted = load(KEYS.deletedTxIds, []);
+    if (!deleted.includes(id)) save(KEYS.deletedTxIds, [...deleted, id].slice(-500));
   }
 
   // ── Stock Trade CRUD ────────────────────────────────────────────
