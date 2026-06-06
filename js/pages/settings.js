@@ -644,7 +644,7 @@ const PageSettings = (() => {
       await Sync.pull();
       render();
     } catch (e) {
-      const isAuthErr = /gmail_auth_error/.test(e.message);
+      const isAuthErr = /gmail_auth_error|no_token/.test(e.message);
       const msg = isAuthErr ? '請重新登入以授權 Gmail 讀取權限' : e.message;
       if (status) status.textContent = `✗ 匯入失敗：${msg}`;
       Utils.showToast(`匯入失敗：${msg}`);
