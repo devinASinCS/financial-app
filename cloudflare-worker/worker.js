@@ -278,8 +278,13 @@ async function importTx(user, req, env, json) {
 async function importEmailNow(user, env, json) {
   const row = await env.DB.prepare('SELECT refresh_token FROM users WHERE id = ?').bind(user.id).first();
   if (!row?.refresh_token) return json({ ok: false, error: 'no_token' }, 400);
-  const token = await getGmailAccessToken(row.refresh_token, env);
-  if (!token) return json({ ok: false, error: 'token_refresh_failed' }, 400);
+  let token;
+  try {
+    token = await getGmailAccessToken(row.refresh_token, env);
+  } catch (e) {
+    const error = e.message === 'invalid_grant' ? 'reauth_required' : 'token_refresh_failed';
+    return json({ ok: false, error }, 400);
+  }
   // Clear processed IDs so past emails get re-scanned (safe: _mergeTx deduplicates by tx ID)
   await env.DB.prepare(
     "DELETE FROM user_data WHERE user_id = ?1 AND key = 'email_processed_ids'"
@@ -603,7 +608,6 @@ async function runScheduledImport(env) {
   for (const user of users.results) {
     try {
       const token = await getGmailAccessToken(user.refresh_token, env);
-      if (!token) continue;
       await Promise.allSettled([
         processUserEmails(user, token, env),
         processUserStockPdfs(user, token, env),
@@ -764,8 +768,9 @@ function _detectBrokerFromEmail(from, subject) {
 async function debugRunPdfImport(user, env, json) {
   const row = await env.DB.prepare('SELECT refresh_token FROM users WHERE id = ?').bind(user.id).first();
   if (!row?.refresh_token) return json({ error: 'no refresh_token' });
-  const token = await getGmailAccessToken(row.refresh_token, env);
-  if (!token) return json({ error: 'token exchange failed' });
+  let token;
+  try { token = await getGmailAccessToken(row.refresh_token, env); }
+  catch (e) { return json({ error: e.message }); }
 
   const processedRow = await env.DB.prepare(
     "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'stock_pdf_processed_ids'"
@@ -824,8 +829,9 @@ async function debugRunPdfImport(user, env, json) {
 async function debugPdfCheck(user, env, json) {
   const row = await env.DB.prepare('SELECT refresh_token FROM users WHERE id = ?').bind(user.id).first();
   if (!row?.refresh_token) return json({ error: 'no refresh_token' });
-  const token = await getGmailAccessToken(row.refresh_token, env);
-  if (!token) return json({ error: 'token exchange failed' });
+  let token;
+  try { token = await getGmailAccessToken(row.refresh_token, env); }
+  catch (e) { return json({ error: e.message }); }
 
   const messages = await searchGmailMessages(token, STOCK_PDF_SEARCH);
   if (!messages.length) return json({ found: 0, query: STOCK_PDF_SEARCH });
@@ -891,7 +897,8 @@ async function getGmailAccessToken(encryptedRefreshToken, env) {
     }),
   });
   const data = await res.json();
-  return data.access_token || null;
+  if (!data.access_token) throw new Error(data.error || 'token_refresh_failed');
+  return data.access_token;
 }
 
 async function searchGmailMessages(accessToken, query) {
