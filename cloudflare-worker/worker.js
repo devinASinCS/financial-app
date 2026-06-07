@@ -657,11 +657,11 @@ async function processUserEmails(user, accessToken, env, search = GMAIL_SEARCH) 
     if (cc) bankMap[bank.name] = { bankId: bank.id, cardId: cc.id };
   }
 
-  const ts     = nowSec().toString(36);
-  const txList = allTxs.map((tx, i) => {
+  const txList = allTxs.map((tx) => {
     const resolved = (tx.bankName && bankMap[tx.bankName]) || {};
+    const noteSlug = (tx.note || '').trim().slice(0, 15).replace(/\W/g, '_');
     return {
-      id:            ts + i.toString(36) + Math.random().toString(36).slice(2, 6),
+      id:            `ei_${tx.date}_${tx.amount}_${noteSlug}`,
       date:          tx.date,
       type:          'expense',
       amount:        tx.amount,
@@ -920,18 +920,29 @@ async function getGmailMessage(accessToken, msgId) {
   return res.json();
 }
 
+// Bank HTML email is authoritative — prefer HTML over plain text (plain is often truncated)
 function extractPlainBody(payload) {
+  return _extractHtml(payload) || _extractPlainText(payload);
+}
+function _extractHtml(payload) {
+  if (!payload) return '';
+  if (payload.mimeType === 'text/html' && payload.body?.data) {
+    return _decodeBase64url(payload.body.data).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  }
+  for (const part of (payload.parts || [])) {
+    const t = _extractHtml(part);
+    if (t) return t;
+  }
+  return '';
+}
+function _extractPlainText(payload) {
   if (!payload) return '';
   if (payload.mimeType === 'text/plain' && payload.body?.data) {
     return _decodeBase64url(payload.body.data);
   }
   for (const part of (payload.parts || [])) {
-    const text = extractPlainBody(part);
-    if (text) return text;
-  }
-  // Fall back to HTML — strip tags so regexes still match amounts/dates
-  if (payload.mimeType === 'text/html' && payload.body?.data) {
-    return _decodeBase64url(payload.body.data).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    const t = _extractPlainText(part);
+    if (t) return t;
   }
   return '';
 }
