@@ -294,12 +294,12 @@ async function importEmailNow(user, env, json) {
     "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'fm_transactions'"
   ).bind(user.id).first();
   const beforeCount = before ? JSON.parse(before.value).filter(t => t.source === 'email_import').length : 0;
-  await processUserEmails(user, token, env, GMAIL_SEARCH_MANUAL);
+  const stats = await processUserEmails(user, token, env, GMAIL_SEARCH_MANUAL);
   const after = await env.DB.prepare(
     "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'fm_transactions'"
   ).bind(user.id).first();
   const afterCount = after ? JSON.parse(after.value).filter(t => t.source === 'email_import').length : 0;
-  return json({ ok: true, imported: afterCount - beforeCount, total: afterCount });
+  return json({ ok: true, imported: afterCount - beforeCount, total: afterCount, debug: stats });
 }
 
 async function _mergeTx(userId, newTxList, env) {
@@ -645,7 +645,7 @@ async function processUserEmails(user, accessToken, env, search = GMAIL_SEARCH) 
     `).bind(user.id, JSON.stringify(allIds), nowSec()).run();
   }
 
-  if (!allTxs.length) return;
+  if (!allTxs.length) return { messagesFound: messages.length, newMessages: newIds.length, parsed: 0 };
 
   const banksRow = await env.DB.prepare(
     "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'fm_banks'"
@@ -676,6 +676,7 @@ async function processUserEmails(user, accessToken, env, search = GMAIL_SEARCH) 
     };
   });
   await _mergeTx(user.id, txList, env);
+  return { messagesFound: messages.length, newMessages: newIds.length, parsed: allTxs.length };
 }
 
 const STOCK_PDF_SEARCH = '(subject:證券日對帳單 OR subject:買賣報告書) has:attachment newer_than:35d';
