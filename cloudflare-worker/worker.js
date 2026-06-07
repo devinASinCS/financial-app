@@ -23,7 +23,8 @@ const FM_KEYS = [
   'fm_subscriptions', 'fm_expense_events', 'fm_settings',
 ];
 
-const GMAIL_SEARCH = 'subject:(消費通知 OR 刷卡通知 OR 消費提醒 OR 信用卡消費 OR 消費明細 OR 消費彙整) newer_than:3d';
+const GMAIL_SEARCH        = 'subject:(消費通知 OR 刷卡通知 OR 消費提醒 OR 信用卡消費 OR 消費明細 OR 消費彙整) newer_than:3d';
+const GMAIL_SEARCH_MANUAL = 'subject:(消費通知 OR 刷卡通知 OR 消費提醒 OR 信用卡消費 OR 消費明細 OR 消費彙整) newer_than:30d';
 const GMAIL_API    = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
 // ── Entry point ────────────────────────────────────────────────────────────
@@ -293,7 +294,7 @@ async function importEmailNow(user, env, json) {
     "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'fm_transactions'"
   ).bind(user.id).first();
   const beforeCount = before ? JSON.parse(before.value).filter(t => t.source === 'email_import').length : 0;
-  await processUserEmails(user, token, env);
+  await processUserEmails(user, token, env, GMAIL_SEARCH_MANUAL);
   const after = await env.DB.prepare(
     "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'fm_transactions'"
   ).bind(user.id).first();
@@ -616,14 +617,14 @@ async function runScheduledImport(env) {
   }
 }
 
-async function processUserEmails(user, accessToken, env) {
+async function processUserEmails(user, accessToken, env, search = GMAIL_SEARCH) {
 
   const row = await env.DB.prepare(
     "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'email_processed_ids'"
   ).bind(user.id).first();
   const processedIds = new Set(row ? JSON.parse(row.value) : []);
 
-  const messages = await searchGmailMessages(accessToken, GMAIL_SEARCH);
+  const messages = await searchGmailMessages(accessToken, search);
   const allTxs   = [];
   const newIds   = [];
 
