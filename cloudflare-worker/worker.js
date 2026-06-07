@@ -928,6 +928,10 @@ function extractPlainBody(payload) {
     const text = extractPlainBody(part);
     if (text) return text;
   }
+  // Fall back to HTML — strip tags so regexes still match amounts/dates
+  if (payload.mimeType === 'text/html' && payload.body?.data) {
+    return _decodeBase64url(payload.body.data).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  }
   return '';
 }
 
