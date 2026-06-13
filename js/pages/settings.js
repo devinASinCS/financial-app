@@ -94,8 +94,9 @@ const PageSettings = (() => {
   }
 
   // ── Stock PDF Import ──────────────────────────────────────────────
-  var _stockPdfItems  = [];  // [{id, broker, emailDate, subject, fileName, pdfBase64, addedAt}]
-  var _stockParsed    = [];  // [{...trade fields, _id, _checked, _srcId, _srcBroker}]
+  var _stockPdfItems    = [];  // [{id, broker, emailDate, subject, fileName, pdfBase64, addedAt}]
+  var _stockParsed      = [];  // [{...trade fields, _id, _checked, _srcId, _srcBroker}]
+  var _importingTrades  = false;
 
   async function fetchStockPdfQueue() {
     const workerUrl = Auth.getApiUrl();
@@ -163,8 +164,10 @@ const PageSettings = (() => {
   }
 
   async function importSelectedStockTrades() {
+    if (_importingTrades) return;
+    _importingTrades = true;
     const selected = _stockParsed.filter(t => t._checked);
-    if (!selected.length) { Utils.showToast('請先勾選要匯入的交易'); return; }
+    if (!selected.length) { _importingTrades = false; Utils.showToast('請先勾選要匯入的交易'); return; }
 
     const divBankVal      = document.getElementById('div-bank-select')?.value || '';
     const [divBankId, divBankCurrency] = divBankVal ? divBankVal.split(':') : [null, 'USD'];
@@ -217,6 +220,7 @@ const PageSettings = (() => {
     const tradeCount = selected.length - divCount;
     const msg = [tradeCount > 0 && `${tradeCount} 筆交易`, divCount > 0 && `${divCount} 筆股利`].filter(Boolean).join('、');
     Utils.showToast(`已匯入 ${msg}`);
+    _importingTrades = false;
     PageSettings.render();
   }
 
