@@ -1160,7 +1160,7 @@ function emailParseBlocks(blocks, msgDate, opts, bankName) {
     const amount = emailExtractAmount(block, opts.amountRe);
     if (!amount || amount <= 0) continue;
     const merchant = emailExtractText(block, opts.merchantRe || []);
-    const rawDate  = emailExtractDate(block, opts.dateRe || []);
+    const rawDate  = emailExtractDate(block, opts.dateRe || [], msgDate);
     let date;
     if (!rawDate) {
       date = fallback;
@@ -1197,12 +1197,16 @@ function emailExtractText(text, patterns) {
   return null;
 }
 
-function emailExtractDate(text, patterns) {
+function emailExtractDate(text, patterns, msgDate) {
   const cm = text.match(/(\d{3,4})年(\d{1,2})月(\d{1,2})日/);
   if (cm) {
     let cy = parseInt(cm[1]);
     if (cy < 1900) cy += 1911;
-    return cy + '-' + String(cm[2]).padStart(2, '0') + '-' + String(cm[3]).padStart(2, '0');
+    const minYear = msgDate ? msgDate.getFullYear() - 2 : 2020;
+    if (cy >= minYear) {
+      return cy + '-' + String(cm[2]).padStart(2, '0') + '-' + String(cm[3]).padStart(2, '0');
+    }
+    // else: year too old (likely footer reference date) — fall through to other patterns
   }
   for (const re of patterns) {
     const m = text.match(re);
