@@ -633,7 +633,8 @@ async function processUserEmails(user, accessToken, env, search = GMAIL_SEARCH) 
     newIds.push(msgId);
     try {
       const msg = await getGmailMessage(accessToken, msgId);
-      allTxs.push(...parseGmailMessage(msg));
+      const txs = parseGmailMessage(msg);
+      allTxs.push(...txs.map((tx, i) => ({ ...tx, _msgId: msgId, _idx: i })));
     } catch { /* skip unparseable message */ }
   }
 
@@ -659,9 +660,8 @@ async function processUserEmails(user, accessToken, env, search = GMAIL_SEARCH) 
 
   const txList = allTxs.map((tx) => {
     const resolved = (tx.bankName && bankMap[tx.bankName]) || {};
-    const noteSlug = (tx.note || '').trim().slice(0, 15).replace(/\W/g, '_');
     return {
-      id:            `ei_${tx.date}_${tx.amount}_${noteSlug}`,
+      id:            `ei_${tx._msgId}_${tx._idx}`,
       date:          tx.date,
       type:          'expense',
       amount:        tx.amount,
@@ -927,7 +927,15 @@ function extractPlainBody(payload) {
 function _extractHtml(payload) {
   if (!payload) return '';
   if (payload.mimeType === 'text/html' && payload.body?.data) {
-    return _decodeBase64url(payload.body.data).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    return _decodeBase64url(payload.body.data)
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?(tr|td|th|div|p|li)[^>]*>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
   for (const part of (payload.parts || [])) {
     const t = _extractHtml(part);
