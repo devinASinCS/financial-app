@@ -658,6 +658,8 @@ async function processUserEmails(user, accessToken, env, search = GMAIL_SEARCH) 
     if (cc) bankMap[bank.name] = { bankId: bank.id, cardId: cc.id };
   }
 
+  await llmCategorize(allTxs, env);
+
   const txList = allTxs.map((tx) => {
     const resolved = (tx.bankName && bankMap[tx.bankName]) || {};
     return {
@@ -1255,6 +1257,41 @@ function emailBuildTx(amount, merchant, date, bankName, hint) {
     note:     merchant ? merchant.slice(0, 60) : '',
     bankName: bankName || null,
   };
+}
+
+async function llmCategorize(txs, env) {
+  if (!env.GOOGLE_AI_API_KEY) return;
+  const categories = ['餐飲','交通','住房','購物','娛樂','醫療','教育','水電費','通訊','保險','訂閱','信用卡還款','其他'];
+  const uncategorized = txs
+    .map((tx, i) => ({ i, merchant: tx.note }))
+    .filter(x => txs[x.i].category === '其他' && x.merchant);
+  if (!uncategorized.length) return;
+  const merchantList = uncategorized.map((x, n) => `${n + 1}. ${x.merchant}`).join('\n');
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${env.GOOGLE_AI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `Categorize these Taiwan merchant names into exactly one of: ${categories.join(', ')}.\nReply ONLY with a JSON array of strings, one per merchant, in the same order.\n\n${merchantList}`,
+            }],
+          }],
+        }),
+      }
+    );
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const match = text.match(/\[[\s\S]*\]/);
+    if (!match) return;
+    const cats = JSON.parse(match[0]);
+    uncategorized.forEach((x, n) => {
+      if (cats[n] && categories.includes(cats[n])) txs[x.i].category = cats[n];
+    });
+  } catch { /* keep existing categories on any failure */ }
 }
 
 // ── Stock price fetching (unchanged from v1) ───────────────────────────────
