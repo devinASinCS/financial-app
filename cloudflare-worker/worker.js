@@ -1200,6 +1200,12 @@ function emailExtractText(text, patterns) {
 }
 
 function emailExtractDate(text, patterns, msgDate) {
+  const am = text.match(/授權日期[：:\s]\s*(\d{3,4})[\/\-](\d{2})[\/\-](\d{2})/);
+  if (am) {
+    let ay = parseInt(am[1]);
+    if (ay < 1900) ay += 1911;
+    return ay + '-' + am[2] + '-' + am[3];
+  }
   const cm = text.match(/(\d{3,4})年(\d{1,2})月(\d{1,2})日/);
   if (cm) {
     let cy = parseInt(cm[1]);
