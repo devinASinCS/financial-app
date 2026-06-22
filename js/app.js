@@ -59,6 +59,24 @@
     if (debitCount > 0) {
       Utils.showToast(`已自動處理 ${debitCount} 張信用卡扣款，銀行餘額已更新`);
     }
+
+    // 2. TW ex-dividend auto-record generation (once per calendar day)
+    if (typeof TwDivChecker !== 'undefined') {
+      try {
+        const result = await TwDivChecker.checkAndAutoCreate();
+        if (result.created > 0) {
+          Utils.showToast(`已自動建立 ${result.created} 筆除權息紀錄（預估），可至台股確認`);
+          // Re-render current page so new records appear immediately
+          const hash = window.location.hash.replace('#', '') || 'dashboard';
+          if (hash === 'dashboard') PageDashboard.render();
+          else if (hash === 'tw-stocks') PageTWStocks.render();
+        } else if (result.pending.length > 0) {
+          // Fresh pending divs fetched — re-render dashboard so the card appears
+          const hash = window.location.hash.replace('#', '') || 'dashboard';
+          if (hash === 'dashboard') PageDashboard.render();
+        }
+      } catch { /* Worker not configured or network error — silently skip */ }
+    }
   }
 
   // ── Bootstrap ───────────────────────────────────────────────────

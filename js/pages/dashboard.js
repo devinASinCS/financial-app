@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Dashboard page — overview of finances
  */
 const PageDashboard = (() => {
@@ -57,6 +57,7 @@ const PageDashboard = (() => {
 
     // Pending auto-debits
     const pendingDebits = Store.getPendingDebits().filter(d => d.total > 0 && d.daysUntilDebit >= 0 && d.daysUntilDebit <= 7);
+    const pendingTWDivs = typeof TwDivChecker !== 'undefined' ? TwDivChecker.getPendingDivs() : [];
 
     document.getElementById('app-content').innerHTML = `
       <div class="page-header">
@@ -196,6 +197,26 @@ const PageDashboard = (() => {
                 <div style="font-size:16px;font-weight:600;">${twHoldings.length} 檔</div>
               </div>
             </div>
+            ${pendingTWDivs.length > 0 ? `
+              <div style="margin-top:12px;padding:10px 14px;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;">
+                <div style="font-size:12px;font-weight:600;color:#065F46;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+                  <i class="fa-solid fa-calendar-check" style="color:#10B981;font-size:11px;"></i> 即將除權息
+                </div>
+                ${pendingTWDivs.map(d => `
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid #D1FAE5;font-size:12px;color:#065F46;">
+                    <div>
+                      <strong>${d.sym}</strong> ${d.name}
+                      <span style="font-size:11px;color:#6B7280;margin-left:4px;">${Utils.formatDate(d.exDate)}</span>
+                    </div>
+                    <div style="text-align:right;">
+                      ${d.expectedCash > 0 ? `<span style="color:#8B5CF6;font-weight:600;">${Utils.formatTWD(d.expectedCash)}</span>` : ``}
+                      ${d.expectedStockShares > 0 ? `<span style="color:#3B82F6;font-size:11px;margin-left:3px;">+${d.expectedStockShares}股</span>` : ``}
+                    </div>
+                  </div>
+                `).join(``)}
+                <div style="font-size:10px;color:#9CA3AF;margin-top:4px;">*預估金額，實際以入帳為準</div>
+              </div>
+            ` : ``}
           </div>
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
