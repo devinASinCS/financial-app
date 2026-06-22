@@ -23,6 +23,7 @@ const Store = (() => {
   const KEYS = {
     transactions:   'fm_transactions',
     deletedTxIds:   'fm_deleted_tx_ids',
+    deletedTradeIds: 'fm_deleted_trade_ids',
     stockTrades:    'fm_stock_trades',
     dividends:      'fm_dividends',
     banks:          'fm_banks',
@@ -164,6 +165,9 @@ const Store = (() => {
     const old = list.find(t => t.id === id);
     if (old) _adjustBankForTrade(old, true);
     save(KEYS.stockTrades, list.filter(t => t.id !== id));
+    // Tombstone: prevent pull() merge from restoring this trade from D1
+    const deleted = load(KEYS.deletedTradeIds, []);
+    if (!deleted.includes(id)) save(KEYS.deletedTradeIds, [...deleted, id].slice(-500));
   }
 
   // ── Dividend CRUD ───────────────────────────────────────────────

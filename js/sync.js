@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Sync — bidirectional localStorage ↔ Worker/D1 sync.
  * Loaded after auth.js, before app.js.
  * Monkey-patches localStorage.setItem so every fm_* write auto-queues a push.
@@ -6,7 +6,7 @@
 const Sync = (() => {
   const FM_KEYS = [
     'fm_transactions', 'fm_deleted_tx_ids', 'fm_banks', 'fm_stock_trades', 'fm_dividends',
-    'fm_subscriptions', 'fm_expense_events', 'fm_settings',
+    'fm_subscriptions', 'fm_expense_events', 'fm_settings', 'fm_deleted_trade_ids',
   ];
 
   // Download all user data from D1 → localStorage
@@ -47,6 +47,16 @@ const Sync = (() => {
             if (tx.id && !byId.has(tx.id) && !tombstones.has(tx.id)) byId.set(tx.id, tx);
           }
           _nativeSet(key, JSON.stringify([...byId.values()]));
+        } else if (key === 'fm_stock_trades' && Array.isArray(value)) {
+          // Same merge strategy as transactions: union by ID, respect tombstones.
+          const tradeTombstones = new Set(JSON.parse(localStorage.getItem('fm_deleted_trade_ids') || '[]'));
+          const local = JSON.parse(localStorage.getItem('fm_stock_trades') || '[]');
+          const byId = new Map(local.filter(t => t.id).map(t => [t.id, t]));
+          for (const trade of value) {
+            if (trade.id && !byId.has(trade.id) && !tradeTombstones.has(trade.id)) byId.set(trade.id, trade);
+          }
+          const merged = [...byId.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
+          _nativeSet(key, JSON.stringify(merged));
         } else {
           _nativeSet(key, JSON.stringify(value));
         }
@@ -88,8 +98,8 @@ const Sync = (() => {
   }
 
   async function forceSync() {
-    const pullResult = await pull();
-    const pushResult = await push();
+    const pushResult = await push(); // push local first — D1 gets latest before we pull
+    const pullResult = await pull(); // then pull — merges any server-side additions
     return { push: pushResult, pull: pullResult };
   }
 
