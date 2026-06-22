@@ -267,8 +267,21 @@ const PageDashboard = (() => {
   function _renderPendingDivs() {
     const el = document.getElementById('pending-tw-divs-section');
     if (!el) return;
-    const divs = typeof TwDivChecker !== 'undefined' ? TwDivChecker.getPendingDivs() : [];
-    if (divs.length === 0) { el.innerHTML = ''; return; }
+    if (typeof TwDivChecker === 'undefined') { el.innerHTML = ''; return; }
+
+    const divs    = TwDivChecker.getPendingDivs();
+    const checked = !!localStorage.getItem('fm_tw_div_check_date');
+
+    if (divs.length === 0) {
+      // Show a subtle status line so user knows the system ran (hide if no TW holdings)
+      const hasTW = Store.getHoldings('TW').length > 0;
+      if (!hasTW) { el.innerHTML = ''; return; }
+      el.innerHTML = '<div style="font-size:11px;color:#9CA3AF;margin-bottom:16px;padding:2px 0;">'
+        + '<i class="fa-solid fa-calendar-check" style="color:#D1FAE5;margin-right:5px;"></i>'
+        + (checked ? '近期無除權息事件（每日自動更新）' : '⏳ 正在查詢除權息資料…')
+        + '</div>';
+      return;
+    }
 
     let rows = '';
     for (const d of divs) {

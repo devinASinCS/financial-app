@@ -1,4 +1,4 @@
-/**
+﻿/**
  * StockPrice — fetch and cache live stock prices + upcoming dividend data.
  *
  * Strategy:
@@ -99,14 +99,37 @@ const StockPrice = (() => {
    * Returns [] if the worker is not configured or the request fails.
    */
   async function fetchTWUpcomingDividends(symbols) {
-    try {
-      const data = await _postWorker('twDividends');
-      const all = data.dividends || [];
-      const set = new Set(symbols.map(String));
+    const set = new Set(symbols.map(String));
+    function _filterToHoldings(all) {
       return all.filter(d => {
         const sym = d['股票代號'] ?? d['代號'] ?? d['symbol'] ?? '';
         return set.has(String(sym));
       });
+    }
+    function _parseRows(j) {
+      const fields = j.fields || [];
+      return (j.data || []).map(row => {
+        const obj = {};
+        fields.forEach((f, i) => { obj[f] = row[i]; });
+        return obj;
+      });
+    }
+
+    // Try Worker proxy first (may fail if TWSE blocks Cloudflare IPs)
+    try {
+      const data = await _postWorker('twDividends');
+      const all = data.dividends || [];
+      if (all.length > 0) return _filterToHoldings(all);
+    } catch { /* worker not configured or TWSE blocked */ }
+
+    // Fallback: fetch directly from browser — TWSE allows CORS from browser origins
+    try {
+      const r = await fetch('https://www.twse.com.tw/rwd/zh/exRight/TWT48U?response=json', {
+        headers: { Accept: 'application/json' },
+      });
+      if (!r.ok) return [];
+      const j = await r.json();
+      return _filterToHoldings(_parseRows(j));
     } catch { return []; }
   }
 

@@ -83,8 +83,10 @@ const TwDivChecker = (() => {
   async function checkAndAutoCreate() {
     const today = _today();
 
-    // Already ran today — skip the fetch but still return pending from cache.
-    if (localStorage.getItem(CHECK_DATE_KEY) === today) {
+    // Skip the fetch if we already ran today AND have cached data.
+    // If cache is empty (Worker was down last time), retry even on the same day.
+    const cachedRows = Store.getUpcomingTWDivs();
+    if (localStorage.getItem(CHECK_DATE_KEY) === today && cachedRows.length > 0) {
       return { created: 0, pending: getPendingDivs() };
     }
 
