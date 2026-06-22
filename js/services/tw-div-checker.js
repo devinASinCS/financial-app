@@ -1,4 +1,4 @@
-/**
+﻿/**
  * TwDivChecker — Automatic ex-dividend record generation for TW stocks.
  *
  * Runs once per calendar day on app startup. Fetches the TWSE ex-dividend
@@ -51,13 +51,19 @@ const TwDivChecker = (() => {
     const rawDate = _field(row, '除權息日', '除息日期', '除息日', '除權日期', '除權日');
     const exDate  = Utils.normalizeDate(rawDate);
 
+    // Actual payment date — when cash arrives in brokerage account.
+    // TWSE TWT48U includes 現金股利發放日 for cash dividends.
+    // Falls back to exDate when the field is absent (e.g. stock-only rows).
+    const rawPayDate = _field(row, '現金股利發放日', '配息發放日', '發放日');
+    const payDate    = rawPayDate ? Utils.normalizeDate(rawPayDate) : exDate;
+
     // cashPS: NT$ cash dividend per share.
     // stkPS:  NT$ stock dividend per share of par value (par = NT$10),
     //         so new shares = held × (stkPS / 10).
     const cashPS = parseFloat(_field(row, '每股配息', '現金股利') || '0') || 0;
     const stkPS  = parseFloat(_field(row, '每股配股', '股票股利') || '0') || 0;
 
-    return { sym, name, exDate, cashPS, stkPS };
+    return { sym, name, exDate, payDate, cashPS, stkPS };
   }
 
   // ── Public API ───────────────────────────────────────────────────
@@ -110,14 +116,14 @@ const TwDivChecker = (() => {
     const doneKeys = new Set(
       Store.getDividends('TW')
         .filter(d => d.source === AUTO_SOURCE)
-        .map(d => `${d.symbol}_${d.date}`)
+        .map(d => `${d.symbol}_${d.exDate || d.date}`)
     );
 
     let created = 0;
     const pending = [];
 
     for (const row of rows) {
-      const { sym, name, exDate, cashPS, stkPS } = _normalize(row);
+      const { sym, name, exDate, payDate, cashPS, stkPS } = _normalize(row);
       if (!sym || !exDate) continue;
 
       const h = holdingMap[sym];
@@ -136,7 +142,8 @@ const TwDivChecker = (() => {
         if (cashTotal === 0 && stockShares === 0) continue; // nothing to record
 
         Store.addDividend({
-          date: exDate,
+          date: payDate,   // actual distribution date (入帳日)
+          exDate: exDate,  // ex-dividend date stored for reference and dedup
           symbol: sym,
           name: name || sym,
           market: 'TW',
@@ -153,7 +160,7 @@ const TwDivChecker = (() => {
         // the dividend shows up in monthly income totals immediately.
         if (cashTotal > 0) {
           Store.addTransaction({
-            date: exDate,
+            date: payDate,  // income recorded on actual payment date
             type: 'income',
             amount: cashTotal,
             category: '股利',
@@ -171,6 +178,7 @@ const TwDivChecker = (() => {
           sym,
           name: name || sym,
           exDate,
+          payDate,
           expectedCash: Math.round(h.quantity * cashPS),
           expectedStockShares: Math.floor(h.quantity * (stkPS / 10)),
         });
@@ -197,7 +205,7 @@ const TwDivChecker = (() => {
 
     return Store.getUpcomingTWDivs()
       .map(row => {
-        const { sym, name, exDate, cashPS, stkPS } = _normalize(row);
+        const { sym, name, exDate, payDate, cashPS, stkPS } = _normalize(row);
         if (!sym || !exDate || exDate <= today) return null;
         const h = holdingMap[sym];
         if (!h) return null;
@@ -205,6 +213,7 @@ const TwDivChecker = (() => {
           sym,
           name: name || sym,
           exDate,
+          payDate,
           expectedCash: Math.round(h.quantity * cashPS),
           expectedStockShares: Math.floor(h.quantity * (stkPS / 10)),
         };

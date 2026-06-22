@@ -169,6 +169,9 @@ const PageDashboard = (() => {
         </div>
       </div>
 
+      <!-- Pending TW Ex-Dividends -->
+      <div id="pending-tw-divs-section"></div>
+
       <!-- Investment Summary + Recent Tx -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
 
@@ -197,26 +200,7 @@ const PageDashboard = (() => {
                 <div style="font-size:16px;font-weight:600;">${twHoldings.length} 檔</div>
               </div>
             </div>
-            ${pendingTWDivs.length > 0 ? `
-              <div style="margin-top:12px;padding:10px 14px;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;">
-                <div style="font-size:12px;font-weight:600;color:#065F46;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
-                  <i class="fa-solid fa-calendar-check" style="color:#10B981;font-size:11px;"></i> 即將除權息
-                </div>
-                ${pendingTWDivs.map(d => `
-                  <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid #D1FAE5;font-size:12px;color:#065F46;">
-                    <div>
-                      <strong>${d.sym}</strong> ${d.name}
-                      <span style="font-size:11px;color:#6B7280;margin-left:4px;">${Utils.formatDate(d.exDate)}</span>
-                    </div>
-                    <div style="text-align:right;">
-                      ${d.expectedCash > 0 ? `<span style="color:#8B5CF6;font-weight:600;">${Utils.formatTWD(d.expectedCash)}</span>` : ``}
-                      ${d.expectedStockShares > 0 ? `<span style="color:#3B82F6;font-size:11px;margin-left:3px;">+${d.expectedStockShares}股</span>` : ``}
-                    </div>
-                  </div>
-                `).join(``)}
-                <div style="font-size:10px;color:#9CA3AF;margin-top:4px;">*預估金額，實際以入帳為準</div>
-              </div>
-            ` : ``}
+
           </div>
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -275,7 +259,47 @@ const PageDashboard = (() => {
       Charts.renderMonthlyCashFlow('dash-cashflow-chart', monthlyData);
       if (catData.length > 0) Charts.renderCategoryDonut('dash-cat-chart', catData);
     }, 50);
+    _renderPendingDivs();
   }
 
-  return { render };
+  // Render the standalone Pending TW Dividends card.
+  // Called synchronously at end of render() and again after async checkAndAutoCreate().
+  function _renderPendingDivs() {
+    const el = document.getElementById('pending-tw-divs-section');
+    if (!el) return;
+    const divs = typeof TwDivChecker !== 'undefined' ? TwDivChecker.getPendingDivs() : [];
+    if (divs.length === 0) { el.innerHTML = ''; return; }
+
+    let rows = '';
+    for (const d of divs) {
+      const cashHtml = d.expectedCash > 0
+        ? '<span style="color:#8B5CF6;font-weight:600;">' + Utils.formatTWD(d.expectedCash) + '</span>'
+        : '';
+      const stkHtml = d.expectedStockShares > 0
+        ? '<span style="color:#3B82F6;font-size:11px;margin-left:4px;">+' + d.expectedStockShares + '股</span>'
+        : '';
+      const dateLabel = d.payDate && d.payDate !== d.exDate
+        ? '發放日 ' + Utils.formatDate(d.payDate)
+        : '除息日 ' + Utils.formatDate(d.exDate);
+      rows += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid #D1FAE5;">'
+            +   '<div>'
+            +     '<strong style="font-size:14px;color:#065F46;">' + d.sym + '</strong>'
+            +     '<span style="font-size:12px;color:#374151;margin-left:6px;">' + d.name + '</span>'
+            +     '<div style="font-size:11px;color:#6B7280;margin-top:2px;">' + dateLabel + '</div>'
+            +   '</div>'
+            +   '<div style="text-align:right;">' + cashHtml + stkHtml + '</div>'
+            + '</div>';
+    }
+
+    el.innerHTML = '<div class="card" style="margin-bottom:20px;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+      +   '<div class="card-title"><i class="fa-solid fa-calendar-check" style="color:#10B981;margin-right:6px;"></i>即將除權息提醒</div>'
+      +   '<a href="#tw-stocks" class="btn btn-sm btn-ghost">查看台股</a>'
+      + '</div>'
+      + rows
+      + '<div style="font-size:10px;color:#9CA3AF;margin-top:6px;">*金額為預估值，實際以入帳為準</div>'
+      + '</div>';
+  }
+
+  return { render, _renderPendingDivs };
 })();
