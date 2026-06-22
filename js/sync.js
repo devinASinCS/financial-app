@@ -115,5 +115,19 @@ const Sync = (() => {
     }
   };
 
+  // Flush pending debounce immediately on page hide/close.
+  // keepalive:true on push() ensures the fetch survives tab close.
+  function _flushOnHide() {
+    if (_timer !== null) {
+      clearTimeout(_timer);
+      _timer = null;
+      push();
+    }
+  }
+  window.addEventListener('pagehide', _flushOnHide);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') _flushOnHide();
+  });
+
   return { pull, push, forceSync };
 })();
