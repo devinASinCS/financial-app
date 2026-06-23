@@ -24,6 +24,7 @@ const Store = (() => {
     transactions:   'fm_transactions',
     deletedTxIds:   'fm_deleted_tx_ids',
     deletedTradeIds: 'fm_deleted_trade_ids',
+    deletedDivIds:  'fm_deleted_div_ids',
     stockTrades:    'fm_stock_trades',
     dividends:      'fm_dividends',
     banks:          'fm_banks',
@@ -192,6 +193,8 @@ const Store = (() => {
 
   function deleteDividend(id) {
     save(KEYS.dividends, load(KEYS.dividends).filter(d => d.id !== id));
+    const deleted = load(KEYS.deletedDivIds, []);
+    if (!deleted.includes(id)) save(KEYS.deletedDivIds, [...deleted, id].slice(-500));
   }
 
   // ── Bank CRUD ───────────────────────────────────────────────────

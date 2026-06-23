@@ -7,6 +7,7 @@ const Sync = (() => {
   const FM_KEYS = [
     'fm_transactions', 'fm_deleted_tx_ids', 'fm_banks', 'fm_stock_trades', 'fm_dividends',
     'fm_subscriptions', 'fm_expense_events', 'fm_settings', 'fm_deleted_trade_ids',
+    'fm_deleted_div_ids',
   ];
 
   // Download all user data from D1 → localStorage
@@ -41,6 +42,7 @@ const Sync = (() => {
       // which would silently discard local tombstones and restore deleted records.
       const tombstones      = new Set(JSON.parse(localStorage.getItem('fm_deleted_tx_ids')    || '[]'));
       const tradeTombstones = new Set(JSON.parse(localStorage.getItem('fm_deleted_trade_ids') || '[]'));
+      const divTombstones   = new Set(JSON.parse(localStorage.getItem('fm_deleted_div_ids')   || '[]'));
       for (const [key, value] of Object.entries(data)) {
         if (key === 'fm_transactions' && Array.isArray(value)) {
           // Merge: union local + D1 by ID so server-added email imports aren't lost.
@@ -60,12 +62,24 @@ const Sync = (() => {
           }
           const merged = [...byId.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
           _nativeSet(key, JSON.stringify(merged));
+        } else if (key === 'fm_dividends' && Array.isArray(value)) {
+          // Merge: same strategy as transactions/trades — union by ID, respect tombstones.
+          const local = JSON.parse(localStorage.getItem('fm_dividends') || '[]');
+          const byId = new Map(local.filter(d => d.id).map(d => [d.id, d]));
+          for (const div of value) {
+            if (div.id && !byId.has(div.id) && !divTombstones.has(div.id)) byId.set(div.id, div);
+          }
+          const merged = [...byId.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
+          _nativeSet(key, JSON.stringify(merged));
         } else if (key === 'fm_deleted_trade_ids' && Array.isArray(value)) {
           // Union: never discard local tombstones that haven't reached the server yet.
           _nativeSet(key, JSON.stringify([...new Set([...tradeTombstones, ...value])].slice(-500)));
         } else if (key === 'fm_deleted_tx_ids' && Array.isArray(value)) {
           // Union: same for transaction tombstones.
           _nativeSet(key, JSON.stringify([...new Set([...tombstones, ...value])].slice(-500)));
+        } else if (key === 'fm_deleted_div_ids' && Array.isArray(value)) {
+          // Union: same for dividend tombstones.
+          _nativeSet(key, JSON.stringify([...new Set([...divTombstones, ...value])].slice(-500)));
         } else {
           _nativeSet(key, JSON.stringify(value));
         }
