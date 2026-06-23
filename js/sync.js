@@ -36,7 +36,11 @@ const Sync = (() => {
 
       const keys = Object.keys(data);
       // Snapshot tombstones before loop so else-branch writes can't clobber them mid-merge
-      const tombstones = new Set(JSON.parse(localStorage.getItem('fm_deleted_tx_ids') || '[]'));
+      // Snapshot tombstones before iterating — the else branch below can overwrite
+      // fm_deleted_*_ids mid-loop if the server sends them before the trade/tx arrays,
+      // which would silently discard local tombstones and restore deleted records.
+      const tombstones      = new Set(JSON.parse(localStorage.getItem('fm_deleted_tx_ids')    || '[]'));
+      const tradeTombstones = new Set(JSON.parse(localStorage.getItem('fm_deleted_trade_ids') || '[]'));
       for (const [key, value] of Object.entries(data)) {
         if (key === 'fm_transactions' && Array.isArray(value)) {
           // Merge: union local + D1 by ID so server-added email imports aren't lost.
@@ -49,7 +53,6 @@ const Sync = (() => {
           _nativeSet(key, JSON.stringify([...byId.values()]));
         } else if (key === 'fm_stock_trades' && Array.isArray(value)) {
           // Same merge strategy as transactions: union by ID, respect tombstones.
-          const tradeTombstones = new Set(JSON.parse(localStorage.getItem('fm_deleted_trade_ids') || '[]'));
           const local = JSON.parse(localStorage.getItem('fm_stock_trades') || '[]');
           const byId = new Map(local.filter(t => t.id).map(t => [t.id, t]));
           for (const trade of value) {
@@ -57,6 +60,12 @@ const Sync = (() => {
           }
           const merged = [...byId.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
           _nativeSet(key, JSON.stringify(merged));
+        } else if (key === 'fm_deleted_trade_ids' && Array.isArray(value)) {
+          // Union: never discard local tombstones that haven't reached the server yet.
+          _nativeSet(key, JSON.stringify([...new Set([...tradeTombstones, ...value])].slice(-500)));
+        } else if (key === 'fm_deleted_tx_ids' && Array.isArray(value)) {
+          // Union: same for transaction tombstones.
+          _nativeSet(key, JSON.stringify([...new Set([...tombstones, ...value])].slice(-500)));
         } else {
           _nativeSet(key, JSON.stringify(value));
         }

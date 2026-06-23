@@ -20,6 +20,12 @@ const TwDivChecker = (() => {
   // Prevents redundant fetches within the same calendar day.
   const CHECK_DATE_KEY = 'fm_tw_div_check_date';
 
+  // Persistent set of "symbol_exDate" keys that have already been auto-created.
+  // NOT in sync FM_KEYS intentionally — pull() must not overwrite it, because
+  // if the auto-created dividend wasn't pushed yet the server's fm_dividends
+  // won't contain it and we'd lose the dedup state and create duplicates.
+  const AUTO_DONE_KEY = 'fm_tw_div_auto_done';
+
   // source tag applied to both auto-created dividends and their income transactions.
   // Used as the dedup discriminator so we only skip OUR own records, not manual ones.
   const AUTO_SOURCE = 'auto_exdiv';
@@ -115,11 +121,16 @@ const TwDivChecker = (() => {
 
     // Build a dedup set from already-auto-created dividend records to guarantee
     // idempotency if checkAndAutoCreate somehow runs more than once per day.
-    const doneKeys = new Set(
-      Store.getDividends('TW')
+    // Build dedup set from BOTH the persisted done-key cache AND live dividend records.
+    // The cache survives pull() overwriting fm_dividends; the live records cover the
+    // case where the cache was cleared (e.g. localStorage wipe on a new device).
+    const _storedDone = JSON.parse(localStorage.getItem(AUTO_DONE_KEY) || '[]');
+    const doneKeys = new Set([
+      ..._storedDone,
+      ...Store.getDividends('TW')
         .filter(d => d.source === AUTO_SOURCE)
-        .map(d => `${d.symbol}_${d.exDate || d.date}`)
-    );
+        .map(d => `${d.symbol}_${d.exDate || d.date}`),
+    ]);
 
     let created = 0;
     const pending = [];
@@ -188,6 +199,9 @@ const TwDivChecker = (() => {
     }
 
     pending.sort((a, b) => a.exDate.localeCompare(b.exDate));
+    // Persist done keys so recurring runs (across days) skip already-created records
+    // even when fm_dividends was overwritten by a server pull.
+    localStorage.setItem(AUTO_DONE_KEY, JSON.stringify([...doneKeys]));
     localStorage.setItem(CHECK_DATE_KEY, today);
     return { created, pending };
   }
