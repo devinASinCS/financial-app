@@ -33,7 +33,8 @@ const TwDivChecker = (() => {
   // ── Helpers ─────────────────────────────────────────────────────
 
   function _today() {
-    return new Date().toISOString().slice(0, 10);
+    const d = new Date();
+    return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
   }
 
   // Pull a value from a TWSE row object, trying multiple possible field names.
