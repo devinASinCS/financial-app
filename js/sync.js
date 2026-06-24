@@ -134,7 +134,7 @@ const Sync = (() => {
     _nativeSet(key, value);
     if (key.startsWith('fm_') && FM_KEYS.includes(key)) {
       clearTimeout(_timer);
-      _timer = setTimeout(push, 1500); // debounce — batch rapid mutations
+      _timer = setTimeout(push, 0); // debounce — batch synchronous multi-write ops; push immediately after
     }
   };
 
