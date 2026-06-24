@@ -192,9 +192,20 @@ const Store = (() => {
   }
 
   function deleteDividend(id) {
-    save(KEYS.dividends, load(KEYS.dividends).filter(d => d.id !== id));
+    const list = load(KEYS.dividends);
+    const old  = list.find(d => d.id === id);
+    save(KEYS.dividends, list.filter(d => d.id !== id));
     const deleted = load(KEYS.deletedDivIds, []);
     if (!deleted.includes(id)) save(KEYS.deletedDivIds, [...deleted, id].slice(-500));
+    // Block TwDivChecker from auto-recreating this dividend on next open.
+    // Without this, checkAndAutoCreate would see the exDate ≤ today and re-insert.
+    if (old && old.symbol && (old.exDate || old.date)) {
+      const doneKey = `${old.symbol}_${old.exDate || old.date}`;
+      const done = JSON.parse(localStorage.getItem('fm_tw_div_auto_done') || '[]');
+      if (!done.includes(doneKey)) {
+        localStorage.setItem('fm_tw_div_auto_done', JSON.stringify([...done, doneKey]));
+      }
+    }
   }
 
   // ── Bank CRUD ───────────────────────────────────────────────────
