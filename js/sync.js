@@ -138,14 +138,13 @@ const Sync = (() => {
     }
   };
 
-  // Flush pending debounce immediately on page hide/close.
-  // keepalive:true on push() ensures the fetch survives tab close.
+  // Flush on page hide/close. Always push — not just when debounce is pending —
+  // so data reaches D1 even if the 1500ms timer already fired but push hadn't completed.
+  // keepalive:true ensures the fetch survives tab close.
   function _flushOnHide() {
-    if (_timer !== null) {
-      clearTimeout(_timer);
-      _timer = null;
-      push();
-    }
+    clearTimeout(_timer);
+    _timer = null;
+    push();
   }
   window.addEventListener('pagehide', _flushOnHide);
   document.addEventListener('visibilitychange', () => {
