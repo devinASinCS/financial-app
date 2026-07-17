@@ -475,6 +475,9 @@ async function handleLegacyAction(req, env, json) {
   if (action === 'queue_stock_pdf') {
     if (!user) return json({ ok: false, error: 'Unauthorized' }, 401);
     const queue = await _getPdfQueue(user.id, env);
+    // 同一份 PDF 可能被 GAS 與 Worker 排程各自抓到（兩者的已處理 ID 各自獨立）
+    const dup = queue.find(i => _pdfKey(i.pdfBase64) === _pdfKey(body.pdfBase64));
+    if (dup) return json({ ok: true, id: dup.id, duplicate: true });
     const item  = {
       id:        randHex(8),
       broker:    body.broker    || '未知券商',
@@ -528,6 +531,9 @@ async function handleLegacyAction(req, env, json) {
 }
 
 // ── PDF queue helpers (stored per-user in D1) ──────────────────────────────
+// 去重比對用：GAS 上傳的 base64 有補位「=」，Gmail API 的沒有 — 比對前先去掉
+function _pdfKey(b64) { return (b64 || '').replace(/=+$/, ''); }
+
 async function _getPdfQueue(userId, env) {
   const indexRow = await env.DB.prepare(
     "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'fm_pdf_queue'"
@@ -693,6 +699,7 @@ async function processUserStockPdfs(user, accessToken, env) {
 
   const messages = await searchGmailMessages(accessToken, STOCK_PDF_SEARCH);
   const queue    = await _getPdfQueue(user.id, env);
+  const queuedPdfKeys = new Set(queue.map(i => _pdfKey(i.pdfBase64)));
   const newIds   = [];
 
   for (const { id: msgId } of messages) {
@@ -722,13 +729,17 @@ async function processUserStockPdfs(user, accessToken, env) {
           rawB64 = part.body.data;
         }
         if (!rawB64) continue;
+        const stdB64 = rawB64.replace(/-/g, '+').replace(/_/g, '/');
+        // 同一份 PDF 可能已由 GAS 上傳進佇列（兩者的已處理 ID 各自獨立）
+        if (queuedPdfKeys.has(_pdfKey(stdB64))) continue;
+        queuedPdfKeys.add(_pdfKey(stdB64));
         queue.push({
           id:        randHex(8),
           broker,
           emailDate: date,
           subject,
           fileName:  part.filename || 'statement.pdf',
-          pdfBase64: rawB64.replace(/-/g, '+').replace(/_/g, '/'),
+          pdfBase64: stdB64,
           addedAt:   new Date().toISOString(),
         });
       }

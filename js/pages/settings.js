@@ -133,12 +133,17 @@ const PageSettings = (() => {
     if (container) container.innerHTML = '<p style="color:#6b7280;font-size:13px;padding:8px 0;">解析中，請稍候...</p>';
     _stockParsed = [];
     let errors = '';
+    const seenAcrossPdfs = new Set();
 
     for (const item of _stockPdfItems) {
       try {
         const text   = await _extractPdfText(item.pdfBase64, password);
         const trades = _parseTWStockStatement(text, item.broker);
         for (const t of trades) {
+          // 同一筆交易可能同時出現在「買賣報告書」與「日對帳單」兩份 PDF 中
+          const k = `${t.date}|${t.symbol}|${t.action}|${t.quantity}|${t.price}`;
+          if (seenAcrossPdfs.has(k)) continue;
+          seenAcrossPdfs.add(k);
           _stockParsed.push({
             ...t,
             _id:        Math.random().toString(36).slice(2),
@@ -173,6 +178,11 @@ const PageSettings = (() => {
     const [divBankId, divBankCurrency] = divBankVal ? divBankVal.split(':') : [null, 'USD'];
     const usdRate   = Store.getExchangeRate('USD');
 
+    // 略過已存在的交易（同 PDF 重複上傳 / 佇列清除失敗後重新匯入）
+    const existingKeys = new Set(Store.getStockTrades().map(t =>
+      `${t.date}|${t.symbol}|${t.action}|${t.quantity}|${t.price}`));
+    let dupCount = 0;
+
     for (const t of selected) {
       if (t.action === 'dividend') {
         Store.addDividend({
@@ -196,6 +206,9 @@ const PageSettings = (() => {
         }
         continue;
       }
+      const key = `${t.date}|${t.symbol}|${t.action}|${t.quantity}|${t.price}`;
+      if (existingKeys.has(key)) { dupCount++; continue; }
+      existingKeys.add(key);
       Store.addStockTrade({
         date: t.date, symbol: t.symbol, name: t.name,
         action: t.action, quantity: t.quantity, price: t.price,
@@ -217,8 +230,9 @@ const PageSettings = (() => {
 
     _stockParsed = _stockParsed.filter(t => !t._checked);
     const divCount   = selected.filter(t => t.action === 'dividend').length;
-    const tradeCount = selected.length - divCount;
-    const msg = [tradeCount > 0 && `${tradeCount} 筆交易`, divCount > 0 && `${divCount} 筆股利`].filter(Boolean).join('、');
+    const tradeCount = selected.length - divCount - dupCount;
+    const msg = [tradeCount > 0 && `${tradeCount} 筆交易`, divCount > 0 && `${divCount} 筆股利`,
+                 dupCount > 0 && `略過 ${dupCount} 筆重複`].filter(Boolean).join('、');
     Utils.showToast(`已匯入 ${msg}`);
     _importingTrades = false;
     PageSettings.render();
