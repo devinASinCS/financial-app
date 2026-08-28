@@ -538,6 +538,10 @@ const Modal = (() => {
       date: Utils.today(), symbol: '', name: '',
       cashTotal: '', stockShares: '', note: '', market,
     };
+    // Older records stored only `date`; fall back to it for both fields so
+    // editing an existing dividend doesn't blank out the inputs.
+    const exVal  = d.exDate  || d.date;
+    const payVal = d.payDate || d.date;
 
     open(`
       <div class="modal-header">
@@ -548,7 +552,7 @@ const Modal = (() => {
         <div class="grid-2">
           <div class="form-group">
             <label class="form-label">${isTW ? '除息/除權日' : '配息日'}</label>
-            <input type="date" id="div-date" class="form-input" value="${d.date}">
+            <input type="date" id="div-date" class="form-input" value="${exVal}">
           </div>
           <div class="form-group">
             <label class="form-label">${isTW ? '股票代號' : '股票代碼'}</label>
@@ -558,6 +562,14 @@ const Modal = (() => {
               oninput="Modal._onDivSymbolInput('${market}')">
           </div>
         </div>
+        ${isTW ? `
+        <div class="form-group">
+          <label class="form-label">
+            現金股利發放日
+            <span style="font-size:11px;color:#9CA3AF;font-weight:400;">（現金入帳日，股利收入記在這一天）</span>
+          </label>
+          <input type="date" id="div-pay-date" class="form-input" value="${payVal}">
+        </div>` : ''}
         <div class="form-group">
           <label class="form-label">
             股票名稱
@@ -613,8 +625,13 @@ const Modal = (() => {
 
     if (!date || !symbol) { Utils.showToast('請填寫日期與股票代號'); return; }
 
+    // TW records carry a separate 發放日; the linked income lands on it rather
+    // than on the ex-date. US has a single 配息日, which already is the pay date.
+    const payDateEl = document.getElementById('div-pay-date');
+    const payDate   = (payDateEl && payDateEl.value) || date;
+
     const data = {
-      date, symbol, name: name || symbol, market,
+      date, exDate: date, payDate, symbol, name: name || symbol, market,
       cashTotal, stockShares, note,
       cashPerShare: null, stockRatio: null, holdingQuantity: null,
     };
@@ -626,7 +643,7 @@ const Modal = (() => {
       Store.addDividend(data);
       if (cashTotal > 0) {
         Store.addTransaction({
-          date, type: 'income',
+          date: payDate, type: 'income',
           amount: cashTotal,
           category: '股利',
           note: `${symbol} ${name || symbol} ${market === 'TW' ? '除權息' : '股利'}`,

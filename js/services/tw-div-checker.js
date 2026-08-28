@@ -3,14 +3,21 @@
  *
  * Runs once per calendar day on app startup. Fetches the TWSE ex-dividend
  * calendar via the Cloudflare Worker, matches results against the user's TW
- * holdings, and:
- *   - Auto-creates estimated dividend + income records for ex-dates that are
- *     today or earlier (amounts = shares × per-share dividend from TWSE data).
- *   - Exposes getPendingDivs() so dashboard.js can synchronously render a
- *     "upcoming ex-dividends" preview card from the cached calendar.
+ * holdings, and applies this rule per (symbol, ex-date):
  *
- * Dedup guarantee: before inserting, checks for an existing dividend record
- * with source='auto_exdiv' and the same symbol+date, so running twice is safe.
+ *   today <  exDate  → nothing; the row is surfaced on the dashboard as upcoming.
+ *   today >= exDate  → create ONE dividend record (shares × per-share amounts)
+ *                      plus one income transaction dated on the 發放日, unless
+ *                      this (symbol, ex-date) was already recorded.
+ *
+ * The record is anchored to the ex-date (`date` = `exDate`), while `payDate`
+ * carries the 現金股利發放日 — the day the cash actually lands, and therefore the
+ * date used for the linked income transaction.
+ *
+ * Create-once guarantee: a (symbol, ex-date) key is written to a persistent
+ * ledger the moment its record is created, and the ledger is unioned with every
+ * live TW dividend record before the loop runs. Deleting a dividend also writes
+ * its key (see Store.deleteDividend), so a record you removed is never rebuilt.
  *
  * Amounts are pre-tax estimates. Users can edit/delete auto-created records
  * from the 台股 → 除權息 tab.
@@ -80,8 +87,8 @@ const TwDivChecker = (() => {
    *
    * 1. Fetches the TWSE upcoming ex-dividend calendar from the Worker.
    * 2. For each entry whose ex-date ≤ today and the user holds the stock:
-   *    - Creates a dividend record (if not already done).
-   *    - Creates a matching income transaction.
+   *    - Creates a dividend record dated on the ex-date (if not already done).
+   *    - Creates a matching income transaction dated on the pay date.
    * 3. Returns { created: number, pending: Array } where pending is the list
    *    of future ex-dates with expected amounts for dashboard display.
    *
@@ -120,18 +127,29 @@ const TwDivChecker = (() => {
       return { created: 0, pending: [] };
     }
 
-    // Build a dedup set from already-auto-created dividend records to guarantee
-    // idempotency if checkAndAutoCreate somehow runs more than once per day.
-    // Build dedup set from BOTH the persisted done-key cache AND live dividend records.
-    // The cache survives pull() overwriting fm_dividends; the live records cover the
-    // case where the cache was cleared (e.g. localStorage wipe on a new device).
+    // Dedup set of `symbol_exDate` keys that must never be created a second time.
+    // Union of two independent sources so a gap in either one can't produce a duplicate:
+    //   1. the persisted ledger, which survives pull() overwriting fm_dividends and
+    //      also records dividends the user deleted (see Store.deleteDividend);
+    //   2. every live TW dividend record — ANY source, not just auto_exdiv, so a
+    //      manually entered dividend for the same stock and ex-date blocks the
+    //      auto-create instead of ending up alongside it.
     const _storedDone = JSON.parse(localStorage.getItem(AUTO_DONE_KEY) || '[]');
     const doneKeys = new Set([
       ..._storedDone,
-      ...Store.getDividends('TW')
-        .filter(d => d.source === AUTO_SOURCE)
-        .map(d => `${d.symbol}_${d.exDate || d.date}`),
+      ...Store.getDividends('TW').map(d => `${d.symbol}_${d.exDate || d.date}`),
     ]);
+
+    // Persist one key the moment its record is created, rather than batching every
+    // key to the end of the loop: a mid-loop failure (quota, bad row) then can't
+    // discard the keys for records that were already written.
+    function _markDone(key) {
+      doneKeys.add(key);
+      const stored = JSON.parse(localStorage.getItem(AUTO_DONE_KEY) || '[]');
+      if (!stored.includes(key)) {
+        localStorage.setItem(AUTO_DONE_KEY, JSON.stringify([...stored, key]));
+      }
+    }
 
     let created = 0;
     const pending = [];
@@ -144,7 +162,11 @@ const TwDivChecker = (() => {
       if (!h) continue; // user doesn't hold this stock
 
       if (exDate <= today) {
-        // Ex-date has arrived or already passed — auto-create if not yet recorded.
+        // The ex-date has arrived, or was missed because the app wasn't opened that
+        // day — create exactly once, ever. The test is `today >= exDate` rather than
+        // an exact match so skipping the ex-date over a weekend or a holiday still
+        // records the dividend on the next open; the key check below is what keeps
+        // that from happening more than once.
         const key = `${sym}_${exDate}`;
         if (doneKeys.has(key)) continue;
 
@@ -156,8 +178,9 @@ const TwDivChecker = (() => {
         if (cashTotal === 0 && stockShares === 0) continue; // nothing to record
 
         Store.addDividend({
-          date: payDate,   // actual distribution date (入帳日)
-          exDate: exDate,  // ex-dividend date stored for reference and dedup
+          date: exDate,    // record is anchored to the ex-dividend event
+          exDate: exDate,  // 除息日 — also the dedup discriminator
+          payDate: payDate, // 發放日 — the day the linked income is recorded on
           symbol: sym,
           name: name || sym,
           market: 'TW',
@@ -183,7 +206,7 @@ const TwDivChecker = (() => {
           });
         }
 
-        doneKeys.add(key);
+        _markDone(key);
         created++;
 
       } else {
@@ -200,9 +223,6 @@ const TwDivChecker = (() => {
     }
 
     pending.sort((a, b) => a.exDate.localeCompare(b.exDate));
-    // Persist done keys so recurring runs (across days) skip already-created records
-    // even when fm_dividends was overwritten by a server pull.
-    localStorage.setItem(AUTO_DONE_KEY, JSON.stringify([...doneKeys]));
     localStorage.setItem(CHECK_DATE_KEY, today);
     return { created, pending };
   }

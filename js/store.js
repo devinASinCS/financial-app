@@ -207,11 +207,14 @@ const Store = (() => {
       }
     }
     // Remove linked auto-created income transaction so income section stays consistent.
+    // The income is dated on the pay date, not the record's own (ex-)date; older
+    // records predate the split and stored the pay date in `date`, so fall back.
     if (old && old.source === 'auto_exdiv' && old.symbol) {
       const txs = load(KEYS.transactions);
+      const incomeDate = old.payDate || old.date;
       const linked = txs.find(t =>
         t.source === 'auto_exdiv' && t.category === '股利' &&
-        t.date === old.date && t.note && t.note.startsWith(old.symbol + ' ')
+        t.date === incomeDate && t.note && t.note.startsWith(old.symbol + ' ')
       );
       if (linked) {
         save(KEYS.transactions, txs.filter(t => t.id !== linked.id));
