@@ -206,13 +206,19 @@ const Store = (() => {
         localStorage.setItem('fm_tw_div_auto_done', JSON.stringify([...done, doneKey]));
       }
     }
-    // Remove linked auto-created income transaction so income section stays consistent.
-    if (old && old.source === 'auto_exdiv' && old.symbol) {
+    // Remove linked income transaction so income section stays consistent.
+    if (old) {
       const txs = load(KEYS.transactions);
-      const linked = txs.find(t =>
-        t.source === 'auto_exdiv' && t.category === '股利' &&
-        t.date === old.date && t.note && t.note.startsWith(old.symbol + ' ')
-      );
+      let linked = null;
+      if (old.linkedIncomeId) {
+        linked = txs.find(t => t.id === old.linkedIncomeId);
+      } else if (old.source === 'auto_exdiv' && old.symbol) {
+        // Legacy fallback for old auto-created records without explicit link
+        linked = txs.find(t =>
+          t.source === 'auto_exdiv' && t.category === '股利' &&
+          t.date === old.date && t.note && t.note.startsWith(old.symbol + ' ')
+        );
+      }
       if (linked) {
         save(KEYS.transactions, txs.filter(t => t.id !== linked.id));
         const deletedTx = load(KEYS.deletedTxIds, []);

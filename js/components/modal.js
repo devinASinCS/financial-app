@@ -620,18 +620,30 @@ const Modal = (() => {
     };
 
     if (existingId) {
+      const existing = Store.getDividends(market).find(d => d.id === existingId);
       Store.updateDividend(existingId, data);
-      Utils.showToast('已更新');
-    } else {
-      Store.addDividend(data);
       if (cashTotal > 0) {
-        Store.addTransaction({
+        const incNote = `${symbol} ${name || symbol} ${market === 'TW' ? '除權息' : '股利'}`;
+        if (existing && existing.linkedIncomeId) {
+          Store.updateTransaction(existing.linkedIncomeId, { date, amount: cashTotal, note: incNote });
+        } else {
+          const incTx = Store.addTransaction({ date, type: 'income', amount: cashTotal, category: '股利', note: incNote, source: 'dividend' });
+          Store.updateDividend(existingId, { linkedIncomeId: incTx.id });
+        }
+      }
+      const fmtAmt = market === 'TW' ? Utils.formatTWD(cashTotal) : Utils.formatUSD(cashTotal);
+      Utils.showToast(cashTotal > 0 ? `已更新，${fmtAmt} 收入已同步` : '已更新');
+    } else {
+      const newDiv = Store.addDividend(data);
+      if (cashTotal > 0) {
+        const incTx = Store.addTransaction({
           date, type: 'income',
           amount: cashTotal,
           category: '股利',
           note: `${symbol} ${name || symbol} ${market === 'TW' ? '除權息' : '股利'}`,
           source: 'dividend',
         });
+        Store.updateDividend(newDiv.id, { linkedIncomeId: incTx.id });
       }
       const fmtAmt = market === 'TW' ? Utils.formatTWD(cashTotal) : Utils.formatUSD(cashTotal);
       Utils.showToast(`已新增${cashTotal > 0 ? `，${fmtAmt} 已計入收入` : ''}`);

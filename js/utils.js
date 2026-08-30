@@ -305,6 +305,13 @@ const Utils = (() => {
       return `${year}-${roc[2]}-${roc[3]}`;
     }
 
+    // 115年07月09日 (ROC calendar with 年月日 kanji — used by TWSE TWT48U API)
+    const kanjiRoc = str.match(/^(\d{2,3})年(\d{1,2})月(\d{1,2})日/);
+    if (kanjiRoc) {
+      const year = parseInt(kanjiRoc[1]) + 1911;
+      return `${year}-${String(kanjiRoc[2]).padStart(2,'0')}-${String(kanjiRoc[3]).padStart(2,'0')}`;
+    }
+
     // 20240315
     if (/^\d{8}$/.test(str)) {
       return `${str.slice(0,4)}-${str.slice(4,6)}-${str.slice(6,8)}`;

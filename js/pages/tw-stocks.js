@@ -171,7 +171,7 @@ const PageTWStocks = (() => {
             ${relevantUpcoming.map(d => {
               const sym    = d['股票代號'] ?? d['代號'] ?? '';
               const name   = d['名稱'] ?? '';
-              const exDate = d['除息日'] ?? d['除權日'] ?? d['除權息日'] ?? '';
+              const exDate = d['除權除息日期'] ?? d['除息日'] ?? d['除權日'] ?? d['除權息日'] ?? '';
               const cash   = d['每股配息'] ?? d['現金股利'] ?? '';
               const stock  = d['每股配股'] ?? d['股票股利'] ?? '';
               const detail = [cash ? '配息 ' + cash : '', stock ? '配股 ' + stock : ''].filter(Boolean).join('、');
@@ -191,7 +191,7 @@ const PageTWStocks = (() => {
       const changePct     = hasPrice && p.changePercent !== undefined ? p.changePercent : null;
 
       const upDiv  = relevantUpcoming.find(d => (d['股票代號'] ?? d['代號'] ?? '') === h.symbol);
-      const exDate = upDiv ? (upDiv['除息日'] ?? upDiv['除權日'] ?? upDiv['除權息日'] ?? '') : '';
+      const exDate = upDiv ? (upDiv['除權除息日期'] ?? upDiv['除息日'] ?? upDiv['除權日'] ?? upDiv['除權息日'] ?? '') : '';
 
       const symbolTrades = Store.getStockTrades(MARKET).filter(t => t.symbol === h.symbol).slice().reverse();
       const tradeRows = symbolTrades.map(t => {
