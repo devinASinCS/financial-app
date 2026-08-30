@@ -98,6 +98,10 @@ const PageSettings = (() => {
   var _stockParsed      = [];  // [{...trade fields, _id, _checked, _srcId, _srcBroker}]
   var _importingTrades  = false;
 
+  // Remembers the PDF password across sessions. Kept out of Store/fm_settings
+  // (and therefore out of Sync's FM_KEYS) so it never leaves this browser.
+  const PDF_PWD_KEY = 'fm_stock_pdf_password';
+
   async function fetchStockPdfQueue() {
     const workerUrl = Auth.getApiUrl();
     const el = document.getElementById('stock-pdf-status');
@@ -122,6 +126,13 @@ const PageSettings = (() => {
     }
   }
 
+  function clearStockPdfPassword() {
+    localStorage.removeItem(PDF_PWD_KEY);
+    const el = document.getElementById('stock-pdf-password');
+    if (el) el.value = '';
+    Utils.showToast('已清除已儲存的密碼');
+  }
+
   async function parseAndPreviewPdfs() {
     if (!_stockPdfItems.length) { Utils.showToast('請先點擊「取得待處理對帳單」'); return; }
     if (!window.pdfjsLib) { Utils.showToast('PDF.js 載入中，請稍後再試'); return; }
@@ -129,6 +140,7 @@ const PageSettings = (() => {
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const password  = (document.getElementById('stock-pdf-password') || {}).value || '';
+    if (password) localStorage.setItem(PDF_PWD_KEY, password);
     const container = document.getElementById('stock-pdf-results');
     if (container) container.innerHTML = '<p style="color:#6b7280;font-size:13px;padding:8px 0;">解析中，請稍候...</p>';
     _stockParsed = [];
@@ -567,14 +579,18 @@ const PageSettings = (() => {
             <label style="font-size:13px;font-weight:600;white-space:nowrap;">🔑 PDF 密碼：</label>
             <input type="password" id="stock-pdf-password" class="form-input"
               placeholder="身份證字號 / 生日（格式依券商規定）"
+              value="${(localStorage.getItem(PDF_PWD_KEY) || '').replace(/"/g, '&quot;')}"
               style="max-width:280px;flex:1;">
             <button id="stock-parse-btn" class="btn btn-primary" disabled
               onclick="PageSettings.parseAndPreviewPdfs()">
               🔍 解析並預覽
             </button>
+            <button class="btn btn-sm btn-ghost text-error" title="清除已儲存密碼" onclick="PageSettings.clearStockPdfPassword()">
+              <i class="fa-solid fa-trash fa-xs"></i>
+            </button>
           </div>
           <p style="font-size:11px;color:#166534;margin:6px 0 0;">
-            密碼僅用於本次瀏覽器端解析，不會傳送至任何伺服器或儲存
+            密碼僅用於瀏覽器端解析，儲存在本機瀏覽器（localStorage），不會傳送或同步至伺服器
           </p>
         </div>
 
@@ -677,6 +693,7 @@ const PageSettings = (() => {
     render,
     exportJSON, triggerImport, clearAllData,
     fetchStockPdfQueue, parseAndPreviewPdfs, toggleStockTrade, importSelectedStockTrades,
+    clearStockPdfPassword,
     setDefaultBank, forceSync, triggerEmailImport,
   };
 })();
