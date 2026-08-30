@@ -213,10 +213,13 @@ const Store = (() => {
       if (old.linkedIncomeId) {
         linked = txs.find(t => t.id === old.linkedIncomeId);
       } else if (old.source === 'auto_exdiv' && old.symbol) {
-        // Legacy fallback for old auto-created records without explicit link
+        // Legacy fallback for old auto-created records without explicit link.
+        // The income is dated on the pay date, not the record's own (ex-)date;
+        // older records predate the split and stored the pay date in `date`.
+        const incomeDate = old.payDate || old.date;
         linked = txs.find(t =>
           t.source === 'auto_exdiv' && t.category === '股利' &&
-          t.date === old.date && t.note && t.note.startsWith(old.symbol + ' ')
+          t.date === incomeDate && t.note && t.note.startsWith(old.symbol + ' ')
         );
       }
       if (linked) {

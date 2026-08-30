@@ -373,10 +373,14 @@ const PageTWStocks = (() => {
 
       ${grouped.map(g => {
         const symbolDivs = divs.filter(d => d.symbol === g.symbol);
-        const detailRows = symbolDivs.map(d => `
+        const detailRows = symbolDivs.map(d => {
+          const exDate  = d.exDate || d.date;
+          const payDate = d.payDate;
+          return `
           <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f1f5f9;">
             <div style="flex:1;min-width:0;">
-              <div style="font-size:12px;font-weight:600;color:#374151;">${Utils.formatDate(d.date)}</div>
+              <div style="font-size:12px;font-weight:600;color:#374151;">除息 ${Utils.formatDate(exDate)}</div>
+              ${payDate && payDate !== exDate ? '<div style="font-size:11px;color:#6b7280;">發放 ' + Utils.formatDate(payDate) + '</div>' : ''}
               ${d.note ? '<div style="font-size:11px;color:#94a3b8;">' + d.note + '</div>' : ''}
             </div>
             <div style="text-align:right;flex-shrink:0;">
@@ -387,7 +391,8 @@ const PageTWStocks = (() => {
               <button onclick="event.stopPropagation();PageTWStocks.openEditDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-pen fa-xs"></i></button>
               <button onclick="event.stopPropagation();PageTWStocks.delDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-trash fa-xs"></i></button>
             </div>
-          </div>`).join('');
+          </div>`;
+        }).join('');
 
         return `
           <div style="background:white;border-radius:14px;margin-bottom:10px;overflow:hidden;">
