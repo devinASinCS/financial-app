@@ -494,12 +494,56 @@ async function handleLegacyAction(req, env, json) {
 
   if (action === 'get_stock_pdf_queue') {
     if (!user) return json({ ok: false, error: 'Unauthorized' }, 401);
-    const queue = await _getPdfQueue(user.id, env);
+    const queue = (await _getPdfQueue(user.id, env)).filter(i => !i.kind || i.kind === 'stock');
     const items = body.metaOnly
       ? queue.map(({ id, broker, emailDate, subject, fileName, addedAt }) =>
           ({ id, broker, emailDate, subject, fileName, addedAt }))
       : queue;
     return json({ ok: true, items });
+  }
+
+  if (action === 'queue_credit_pdf') {
+    if (!user) return json({ ok: false, error: 'Unauthorized' }, 401);
+    const queue = await _getPdfQueue(user.id, env);
+    // 同一份 PDF 可能被 GAS 與 Worker 排程各自抓到（兩者的已處理 ID 各自獨立）
+    const dup = queue.find(i => _pdfKey(i.pdfBase64) === _pdfKey(body.pdfBase64));
+    if (dup) return json({ ok: true, id: dup.id, duplicate: true });
+    const item  = {
+      id:        randHex(8),
+      kind:      'credit_pdf',
+      bank:      body.bank      || '未知銀行',
+      emailDate: body.emailDate,
+      subject:   body.subject   || '',
+      fileName:  body.fileName  || 'statement.pdf',
+      pdfBase64: body.pdfBase64,
+      addedAt:   new Date().toISOString(),
+    };
+    queue.push(item);
+    await _savePdfQueue(user.id, queue, env);
+    return json({ ok: true, id: item.id });
+  }
+
+  if (action === 'get_credit_pdf_queue') {
+    if (!user) return json({ ok: false, error: 'Unauthorized' }, 401);
+    const queue = (await _getPdfQueue(user.id, env)).filter(i => i.kind === 'credit_pdf');
+    const items = body.metaOnly
+      ? queue.map(({ id, bank, emailDate, subject, fileName, addedAt }) =>
+          ({ id, bank, emailDate, subject, fileName, addedAt }))
+      : queue;
+    return json({ ok: true, items });
+  }
+
+  if (action === 'parse_credit_pdf') {
+    if (!user) return json({ ok: false, error: 'Unauthorized' }, 401);
+    if (!Array.isArray(body.images) || !body.images.length) {
+      return json({ ok: false, error: 'images required' }, 400);
+    }
+    try {
+      const result = await _parseCreditPdfWithLLM(body.images, env);
+      return json({ ok: true, ...result });
+    } catch (e) {
+      return json({ ok: false, error: e.message }, 500);
+    }
   }
 
   if (action === 'clear_stock_pdf_item') {
@@ -619,6 +663,7 @@ async function runScheduledImport(env) {
       await Promise.allSettled([
         processUserEmails(user, token, env),
         processUserStockPdfs(user, token, env),
+        processUserCreditCardPdfs(user, token, env),
       ]);
     } catch { /* skip failed user */ }
   }
@@ -754,6 +799,133 @@ async function processUserStockPdfs(user, accessToken, env) {
     `).bind(user.id, JSON.stringify(allIds), nowSec()).run();
     await _savePdfQueue(user.id, queue, env);
   }
+}
+
+// ── 台新信用卡電子帳單 PDF（圖像式，無文字層，需靠 LLM 讀圖辨識）───────────────
+const CREDIT_PDF_SEARCH = 'subject:台新信用卡電子帳單 has:attachment newer_than:35d';
+
+async function processUserCreditCardPdfs(user, accessToken, env) {
+  const row = await env.DB.prepare(
+    "SELECT value FROM user_data WHERE user_id = ?1 AND key = 'credit_pdf_processed_ids'"
+  ).bind(user.id).first();
+  const processedIds = new Set(row ? JSON.parse(row.value) : []);
+
+  const messages = await searchGmailMessages(accessToken, CREDIT_PDF_SEARCH);
+  const queue    = await _getPdfQueue(user.id, env);
+  const queuedPdfKeys = new Set(queue.map(i => _pdfKey(i.pdfBase64)));
+  const newIds   = [];
+
+  for (const { id: msgId } of messages) {
+    if (processedIds.has(msgId)) continue;
+    newIds.push(msgId);
+    try {
+      const msg     = await getGmailMessage(accessToken, msgId);
+      const headers = msg.payload?.headers || [];
+      const subject = headers.find(h => h.name === 'Subject')?.value || '';
+      const date    = emailToDateStr(new Date(parseInt(msg.internalDate)));
+
+      const pdfs = _findPdfParts(msg.payload)
+        .filter(p => /TSB_Creditcard_Estatement/i.test(p.filename || ''));
+      for (const part of pdfs) {
+        if ((part.body?.size || 0) > MAX_PDF_BYTES) continue;
+        let rawB64;
+        if (part.body.attachmentId) {
+          const attRes = await fetch(
+            `${GMAIL_API}/messages/${msgId}/attachments/${part.body.attachmentId}`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          if (!attRes.ok) continue;
+          rawB64 = (await attRes.json()).data;
+        } else {
+          rawB64 = part.body.data;
+        }
+        if (!rawB64) continue;
+        const stdB64 = rawB64.replace(/-/g, '+').replace(/_/g, '/');
+        // 同一份 PDF 可能已由 GAS 上傳進佇列（兩者的已處理 ID 各自獨立）
+        if (queuedPdfKeys.has(_pdfKey(stdB64))) continue;
+        queuedPdfKeys.add(_pdfKey(stdB64));
+        queue.push({
+          id:        randHex(8),
+          kind:      'credit_pdf',
+          bank:      '台新銀行',
+          emailDate: date,
+          subject,
+          fileName:  part.filename || 'statement.pdf',
+          pdfBase64: stdB64,
+          addedAt:   new Date().toISOString(),
+        });
+      }
+    } catch { /* skip unparseable message */ }
+  }
+
+  if (newIds.length) {
+    const allIds = [...processedIds, ...newIds].slice(-500);
+    await env.DB.prepare(`
+      INSERT INTO user_data (user_id, key, value, updated_at) VALUES (?1, 'credit_pdf_processed_ids', ?2, ?3)
+      ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `).bind(user.id, JSON.stringify(allIds), nowSec()).run();
+    await _savePdfQueue(user.id, queue, env);
+  }
+}
+
+// 此帳單每個字都是向量繪製，pdfjs 抽不出文字層，只能把頁面渲染成圖片交給 LLM 讀圖辨識。
+const CC_CATEGORIES = ['餐飲','交通','住房','購物','娛樂','醫療','教育','水電費','通訊','保險','訂閱','信用卡還款','其他'];
+
+async function _parseCreditPdfWithLLM(images, env) {
+  if (!env.GOOGLE_AI_API_KEY) throw new Error('GOOGLE_AI_API_KEY not configured');
+
+  const prompt = `這是一份台灣信用卡電子帳單（每個字元都是向量繪製，沒有文字層，只能用圖像辨識）。請讀取「消費明細」表格，欄位依序為：消費日、入帳起息日、消費明細（商店名稱）、新臺幣金額、外幣折算日、消費地、幣別、外幣金額。
+
+請依照以下規則整理成交易清單：
+1. 日期使用「消費日」欄位（民國年，例如 115/07/15），轉換為西元 ISO 格式 YYYY-MM-DD（民國年+1911）。
+2. 完全略過銀行自動扣繳/自動轉帳繳款的那一列（例如「台新銀行帳戶自動轉帳扣繳台新信用卡款」），那是還款不是消費。
+3. 「國外交易服務費」那一列不要單獨列成一筆交易，把該筆金額加進「緊接在它上面的那一筆消費」的新臺幣金額中。
+4. amount 一律填正數（新臺幣金額欄，四捨五入到整數）。
+5. note 填消費明細欄位的商店名稱原文。
+6. category 從這些選項中擇一：${CC_CATEGORIES.join('、')}。無法判斷時填「其他」。
+7. 另外找出帳單上「本期新增款項」的總金額（statementTotal，數字）。
+
+只回覆 JSON，不要有其他文字，格式如下：
+{"statementTotal": 24657, "transactions": [{"date":"2026-07-15","amount":200,"note":"連支*LaLaport Taipei","category":"購物"}]}`;
+
+  const parts = [
+    { text: prompt },
+    ...images.map(b64 => ({ inline_data: { mime_type: 'image/png', data: b64 } })),
+  ];
+
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash:generateContent?key=${env.GOOGLE_AI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts }] }),
+    }
+  );
+  if (!resp.ok) throw new Error(`Gemini API ${resp.status}`);
+  const data = await resp.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('無法解析 LLM 回應');
+  const parsed = JSON.parse(match[0]);
+
+  const transactions = (parsed.transactions || [])
+    .filter(t => t && t.date && typeof t.amount === 'number' && t.amount > 0)
+    .map(t => ({
+      date:     t.date,
+      amount:   Math.round(t.amount),
+      note:     String(t.note || '').slice(0, 100),
+      category: CC_CATEGORIES.includes(t.category) ? t.category : '其他',
+    }));
+
+  const computedTotal  = transactions.reduce((s, t) => s + t.amount, 0);
+  const statementTotal = typeof parsed.statementTotal === 'number' ? parsed.statementTotal : null;
+
+  return {
+    transactions,
+    statementTotal,
+    computedTotal,
+    mismatch: statementTotal != null && statementTotal !== computedTotal,
+  };
 }
 
 function _findPdfParts(payload, found = []) {

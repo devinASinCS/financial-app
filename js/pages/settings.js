@@ -98,9 +98,15 @@ const PageSettings = (() => {
   var _stockParsed      = [];  // [{...trade fields, _id, _checked, _srcId, _srcBroker}]
   var _importingTrades  = false;
 
+  // ── Credit Card PDF Import (image-only PDF, parsed by LLM vision) ──
+  var _ccPdfItems    = [];  // [{id, bank, emailDate, subject, fileName, pdfBase64, addedAt}]
+  var _ccParsed      = [];  // [{date, amount, note, category, _id, _checked, _srcId, _srcFile}]
+  var _importingCcTx = false;
+
   // Remembers the PDF password across sessions. Kept out of Store/fm_settings
   // (and therefore out of Sync's FM_KEYS) so it never leaves this browser.
   const PDF_PWD_KEY = 'fm_stock_pdf_password';
+  const CC_PDF_PWD_KEY = 'fm_tsb_credit_pdf_password';
 
   async function fetchStockPdfQueue() {
     const workerUrl = Auth.getApiUrl();
@@ -248,6 +254,194 @@ const PageSettings = (() => {
     Utils.showToast(`已匯入 ${msg}`);
     _importingTrades = false;
     PageSettings.render();
+  }
+
+  async function fetchCreditPdfQueue() {
+    const workerUrl = Auth.getApiUrl();
+    const el = document.getElementById('cc-pdf-status');
+    if (el) el.textContent = '載入中...';
+    try {
+      const res  = await fetch(workerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...Auth.authHeaders() },
+        body: JSON.stringify({ action: 'get_credit_pdf_queue' }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error);
+      _ccPdfItems = json.items || [];
+      const count = _ccPdfItems.length;
+      if (el) el.textContent = count === 0 ? '佇列為空，無待處理帳單' : `取得 ${count} 份待處理帳單`;
+      const wrap = document.getElementById('cc-pdf-password-wrap');
+      if (wrap) wrap.style.display = count > 0 ? '' : 'none';
+      const btn = document.getElementById('cc-parse-btn');
+      if (btn) btn.disabled = count === 0;
+    } catch (e) {
+      if (el) el.textContent = `錯誤：${e.message}`;
+    }
+  }
+
+  function clearCreditPdfPassword() {
+    localStorage.removeItem(CC_PDF_PWD_KEY);
+    const el = document.getElementById('cc-pdf-password');
+    if (el) el.value = '';
+    Utils.showToast('已清除已儲存的密碼');
+  }
+
+  async function parseAndPreviewCreditPdfs() {
+    if (!_ccPdfItems.length) { Utils.showToast('請先點擊「取得待處理帳單」'); return; }
+    if (!window.pdfjsLib) { Utils.showToast('PDF.js 載入中，請稍後再試'); return; }
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const password  = (document.getElementById('cc-pdf-password') || {}).value || '';
+    if (password) localStorage.setItem(CC_PDF_PWD_KEY, password);
+    const container = document.getElementById('cc-pdf-results');
+    if (container) container.innerHTML = '<p style="color:#6b7280;font-size:13px;padding:8px 0;">解析中（呼叫 AI 讀取帳單圖片），請稍候...</p>';
+    _ccParsed = [];
+    let errors = '';
+    const workerUrl = Auth.getApiUrl();
+
+    for (const item of _ccPdfItems) {
+      try {
+        const images = await _renderPdfPagesToImages(item.pdfBase64, password);
+        const res    = await fetch(workerUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...Auth.authHeaders() },
+          body: JSON.stringify({ action: 'parse_credit_pdf', images, bank: item.bank }),
+        });
+        const json = await res.json();
+        if (!json.ok) { errors += `<p style="color:#dc2626;font-size:12px;">${item.fileName}：${json.error}</p>`; continue; }
+        if (json.mismatch) {
+          errors += `<p style="color:#d97706;font-size:12px;">⚠️ ${item.fileName}：AI 解析總額 NT$${json.computedTotal.toLocaleString()} 與帳單總額 NT$${json.statementTotal.toLocaleString()} 不符，請逐筆核對後再匯入</p>`;
+        }
+        for (const t of json.transactions) {
+          _ccParsed.push({ ...t, _id: Math.random().toString(36).slice(2), _checked: true, _srcId: item.id, _srcFile: item.fileName });
+        }
+        if (json.transactions.length === 0) errors += `<p style="color:#d97706;font-size:12px;">⚠️ ${item.fileName}：解析出 0 筆（密碼錯誤或格式不符）</p>`;
+      } catch (e) {
+        const isPwd = e.name === 'PasswordException' || /password/i.test(e.message);
+        errors += `<p style="color:#dc2626;font-size:12px;">${item.fileName}：${isPwd ? '密碼錯誤' : e.message}</p>`;
+      }
+    }
+    if (container) _renderCcParsedTx(container, errors);
+  }
+
+  function toggleCcTx(id) {
+    const t = _ccParsed.find(x => x._id === id);
+    if (t) t._checked = !t._checked;
+    const btn = document.getElementById('cc-import-btn');
+    if (btn) btn.textContent = `匯入選取的 ${_ccParsed.filter(x => x._checked).length} 筆`;
+  }
+
+  async function importSelectedCcTx() {
+    if (_importingCcTx) return;
+    _importingCcTx = true;
+    const selected = _ccParsed.filter(t => t._checked);
+    if (!selected.length) { _importingCcTx = false; Utils.showToast('請先勾選要匯入的交易'); return; }
+
+    const cardVal = document.getElementById('cc-card-select')?.value || '';
+    const [cardId, bankId] = cardVal ? cardVal.split(':') : [null, null];
+
+    // 略過已存在的交易（同帳單重複上傳 / 佇列清除失敗後重新匯入）
+    const existingKeys = new Set(Store.getTransactions().map(t => `${t.date}|${t.amount}|${t.note}`));
+    let dupCount = 0, count = 0;
+
+    for (const t of selected) {
+      const key = `${t.date}|${t.amount}|${t.note}`;
+      if (existingKeys.has(key)) { dupCount++; continue; }
+      existingKeys.add(key);
+      Store.addTransaction({
+        date: t.date, type: 'expense', amount: t.amount,
+        category: t.category || '其他', note: t.note,
+        source: 'credit_pdf_import', paymentMethod: 'credit_card',
+        bankId: bankId || null, cardId: cardId || null,
+      });
+      count++;
+    }
+
+    // 清除 Worker 佇列中已處理的項目
+    const workerUrl = Auth.getApiUrl();
+    if (workerUrl) {
+      const doneIds = [...new Set(selected.map(t => t._srcId))];
+      await fetch(workerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...Auth.authHeaders() },
+        body: JSON.stringify({ action: 'clear_stock_pdf_items', itemIds: doneIds }),
+      }).catch(() => {});
+      _ccPdfItems = _ccPdfItems.filter(item => !doneIds.includes(item.id));
+    }
+
+    _ccParsed = _ccParsed.filter(t => !t._checked);
+    Utils.showToast(`已匯入 ${count} 筆${dupCount > 0 ? `，略過 ${dupCount} 筆重複` : ''}`);
+    _importingCcTx = false;
+    PageSettings.render();
+  }
+
+  // 此帳單為圖像式 PDF（每個字都是向量繪製，沒有文字層），無法抽取文字，
+  // 只能把每一頁渲染成圖片後交給後端 LLM 讀圖辨識。
+  async function _renderPdfPagesToImages(base64Data, password) {
+    const binary = atob(base64Data.replace(/\s/g, ''));
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    const pdf = await pdfjsLib.getDocument({ data: bytes, password: password || undefined }).promise;
+    const images = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page     = await pdf.getPage(p);
+      const viewport = page.getViewport({ scale: 2 });
+      const canvas   = document.createElement('canvas');
+      canvas.width   = viewport.width;
+      canvas.height  = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      images.push(canvas.toDataURL('image/png').split(',')[1]);
+    }
+    return images;
+  }
+
+  function _renderCcParsedTx(container, extraHtml = '') {
+    if (_ccParsed.length === 0) {
+      container.innerHTML = extraHtml +
+        '<p style="color:#6b7280;font-size:13px;padding:8px 0;">沒有解析到任何交易記錄。請確認 PDF 密碼是否正確。</p>';
+      return;
+    }
+    const count = _ccParsed.filter(t => t._checked).length;
+    const cards = Store.getBanks().flatMap(b =>
+      (b.creditCards || []).filter(c => !c.type || c.type === 'credit')
+        .map(c => ({ ...c, bankId: b.id, bankName: b.name })));
+    const cardOpts = cards.map(c => `<option value="${c.id}:${c.bankId}">${c.bankName} — ${c.name}</option>`).join('');
+    const cardHtml = `<div style="margin-bottom:12px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-weight:600;color:#1d4ed8;">💳 記入卡片：</span>
+      <select id="cc-card-select" class="form-input" style="width:auto;">
+        <option value="">不指定卡片</option>${cardOpts}
+      </select>
+    </div>`;
+
+    const rows = _ccParsed.map(t => `
+      <tr>
+        <td style="text-align:center;">
+          <input type="checkbox" ${t._checked ? 'checked' : ''}
+            onchange="PageSettings.toggleCcTx('${t._id}')">
+        </td>
+        <td style="font-size:12px;white-space:nowrap;">${t.date}</td>
+        <td style="font-size:12px;">${t.note}</td>
+        <td style="font-size:12px;">${t.category}</td>
+        <td style="font-size:12px;text-align:right;">${t.amount.toLocaleString()}</td>
+      </tr>`).join('');
+
+    container.innerHTML = extraHtml + `
+      ${cardHtml}
+      <div style="overflow-x:auto;margin-top:8px;">
+        <table class="data-table" style="font-size:12px;min-width:500px;">
+          <thead><tr><th></th><th>日期</th><th>商店</th><th>分類</th><th class="text-right">金額</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
+        <button id="cc-import-btn" class="btn btn-primary" onclick="PageSettings.importSelectedCcTx()">
+          匯入選取的 ${count} 筆
+        </button>
+        <span style="font-size:12px;color:#6b7280;">共解析出 ${_ccParsed.length} 筆</span>
+      </div>`;
   }
 
   async function _extractPdfText(base64Data, password) {
@@ -614,6 +808,47 @@ const PageSettings = (() => {
         <div id="stock-pdf-results"></div>
       </div>
 
+      <!-- ── Credit Card PDF Import ── -->
+      <div class="card mb-6">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          <h3 class="section-title" style="margin:0;">💳 信用卡帳單 PDF 匯入</h3>
+          <span style="font-size:11px;background:#fce7f3;color:#9d174d;padding:2px 8px;border-radius:12px;font-weight:600;">AI 圖像辨識</span>
+        </div>
+        <p style="font-size:14px;color:#6b7280;margin:8px 0 16px;">
+          系統每 15 分鐘自動偵測 Gmail 中的台新信用卡電子帳單 PDF，無需任何設定。
+          此帳單為圖像式 PDF（沒有文字層），系統會用 AI 讀取每一頁圖片來辨識交易明細，請務必核對解析結果後再匯入。
+        </p>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <button class="btn btn-secondary" onclick="PageSettings.fetchCreditPdfQueue()">
+            <i class="fa-solid fa-rotate"></i> 取得待處理帳單
+          </button>
+          <span id="cc-pdf-status" style="font-size:13px;color:#6b7280;">點擊按鈕從 Worker 取得佇列</span>
+        </div>
+
+        <div id="cc-pdf-password-wrap" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <label style="font-size:13px;font-weight:600;white-space:nowrap;">🔑 PDF 密碼：</label>
+            <input type="password" id="cc-pdf-password" class="form-input"
+              placeholder="信用卡帳單密碼"
+              value="${(localStorage.getItem(CC_PDF_PWD_KEY) || '').replace(/"/g, '&quot;')}"
+              style="max-width:280px;flex:1;">
+            <button id="cc-parse-btn" class="btn btn-primary" disabled
+              onclick="PageSettings.parseAndPreviewCreditPdfs()">
+              🔍 解析並預覽
+            </button>
+            <button class="btn btn-sm btn-ghost text-error" title="清除已儲存密碼" onclick="PageSettings.clearCreditPdfPassword()">
+              <i class="fa-solid fa-trash fa-xs"></i>
+            </button>
+          </div>
+          <p style="font-size:11px;color:#166534;margin:6px 0 0;">
+            密碼僅用於瀏覽器端解析，儲存在本機瀏覽器（localStorage），不會傳送或同步至伺服器
+          </p>
+        </div>
+
+        <div id="cc-pdf-results"></div>
+      </div>
+
       <!-- ── Default Bank ── -->
       <div class="card mb-6">
         <h3 class="section-title">預設銀行</h3>
@@ -694,6 +929,8 @@ const PageSettings = (() => {
     exportJSON, triggerImport, clearAllData,
     fetchStockPdfQueue, parseAndPreviewPdfs, toggleStockTrade, importSelectedStockTrades,
     clearStockPdfPassword,
+    fetchCreditPdfQueue, parseAndPreviewCreditPdfs, toggleCcTx, importSelectedCcTx,
+    clearCreditPdfPassword,
     setDefaultBank, forceSync, triggerEmailImport,
   };
 })();

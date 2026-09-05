@@ -801,3 +801,163 @@ function clearProcessedStmtIds() {
   PropertiesService.getScriptProperties().deleteProperty('processedStmtIds');
   Logger.log('✅ 已清除 processedStmtIds，所有對帳單信件將在下次執行時重新掃描。');
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 台新信用卡電子帳單 PDF 自動匯入
+// ═══════════════════════════════════════════════════════════════════════════════
+// 此帳單為圖像式 PDF（每個字都是向量繪製，沒有文字層），無法用文字擷取解析，
+// 前端會把每一頁渲染成圖片後交給 LLM 讀圖辨識，因此這裡只負責找信、解鎖前的
+// 附件上傳，解密與解析都在 Cashio 設定頁完成。
+//
+// 設定步驟：
+// 1. 執行一次 setupCreditPdfTrigger() 安裝每日定時觸發器
+// 2. 收到帳單信件後，GAS 自動上傳 PDF 至 Worker 佇列
+// 3. 前往 Cashio 設定頁面「信用卡帳單 PDF 匯入」，輸入 PDF 密碼後點擊「解析並預覽」
+// 4. 確認解析結果後點擊匯入
+//
+// 測試：執行 testLatestCreditPdfStatement() 預覽偵測到的信件與附件（不上傳）
+// 重置：執行 clearProcessedCreditPdfIds()
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var CREDIT_PDF_SEARCH_QUERY = 'subject:台新信用卡電子帳單 has:attachment newer_than:35d';
+
+/**
+ * 主函式 — 每日自動執行，掃描台新信用卡帳單信件並上傳 PDF 至 Worker 佇列。
+ */
+function importCreditCardPdfStatements() {
+  var props        = PropertiesService.getScriptProperties();
+  var processedIds = new Set(JSON.parse(props.getProperty('processedCreditPdfIds') || '[]'));
+  var threads      = GmailApp.search(CREDIT_PDF_SEARCH_QUERY, 0, 20);
+  var queued       = 0;
+  var skipped      = 0;
+
+  for (var ti = 0; ti < threads.length; ti++) {
+    var msgs = threads[ti].getMessages();
+    for (var mi = 0; mi < msgs.length; mi++) {
+      var msg   = msgs[mi];
+      var msgId = msg.getId();
+      if (processedIds.has(msgId)) continue;
+
+      var attachments = msg.getAttachments({ includeInlineImages: false });
+      var pdfs = attachments.filter(function(a) {
+        return /TSB_Creditcard_Estatement/i.test(a.getName());
+      });
+
+      processedIds.add(msgId);
+
+      if (pdfs.length === 0) { skipped++; continue; }
+
+      var emailDate = toDateStr(msg.getDate());
+
+      for (var ai = 0; ai < pdfs.length; ai++) {
+        var att    = pdfs[ai];
+        var base64 = Utilities.base64Encode(att.getBytes());
+        var ok = _postCreditPdf({
+          bank:      '台新銀行',
+          emailDate: emailDate,
+          subject:   msg.getSubject(),
+          fileName:  att.getName(),
+          pdfBase64: base64,
+        });
+        if (ok) {
+          queued++;
+          Logger.log('📎 已上傳：' + att.getName() + '（台新銀行，' + Math.round(att.getSize() / 1024) + ' KB）');
+        }
+      }
+    }
+  }
+
+  // 儲存已處理 ID（保留最近 500 個）
+  var ids = [];
+  processedIds.forEach(function(id) { ids.push(id); });
+  props.setProperty('processedCreditPdfIds', JSON.stringify(ids.slice(-500)));
+
+  Logger.log('✅ 信用卡帳單：已上傳 ' + queued + ' 份 PDF，跳過 ' + skipped + ' 封無符合附件信件');
+}
+
+/**
+ * 上傳一份信用卡帳單 PDF 至 Cloudflare Worker 的佇列。
+ */
+function _postCreditPdf(data) {
+  if (!CONFIG.workerUrl || CONFIG.workerUrl.indexOf('YOUR_WORKER') !== -1) {
+    Logger.log('❌ 尚未設定 CONFIG.workerUrl');
+    return false;
+  }
+  if (!CONFIG.apiKey) {
+    Logger.log('❌ 尚未設定 CONFIG.apiKey（請至 Cashio 設定頁產生金鑰）');
+    return false;
+  }
+
+  var workerBase = CONFIG.workerUrl.replace(/\/$/, '');
+  var payload = {
+    action:    'queue_credit_pdf',
+    bank:      data.bank,
+    emailDate: data.emailDate,
+    subject:   data.subject,
+    fileName:  data.fileName,
+    pdfBase64: data.pdfBase64,
+  };
+
+  try {
+    var res  = UrlFetchApp.fetch(workerBase, {
+      method:             'post',
+      contentType:        'application/json',
+      headers:            { 'Authorization': 'Bearer ' + CONFIG.apiKey },
+      payload:            JSON.stringify(payload),
+      muteHttpExceptions: true,
+    });
+    var json = JSON.parse(res.getContentText());
+    if (!json.ok) { Logger.log('❌ 上傳失敗：' + json.error); return false; }
+    return true;
+  } catch (e) {
+    Logger.log('❌ 網路錯誤：' + e.message);
+    return false;
+  }
+}
+
+/**
+ * 安裝每日觸發器（每天早上 8 點執行 importCreditCardPdfStatements）。
+ */
+function setupCreditPdfTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'importCreditCardPdfStatements') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('importCreditCardPdfStatements')
+    .timeBased()
+    .everyDays(1)
+    .atHour(8)
+    .create();
+  Logger.log('✅ 信用卡帳單觸發器已建立：每天早上 8 點執行 importCreditCardPdfStatements()');
+}
+
+/**
+ * 測試：預覽最新一封符合條件的信用卡帳單信件（不上傳）。
+ */
+function testLatestCreditPdfStatement() {
+  var threads = GmailApp.search(CREDIT_PDF_SEARCH_QUERY, 0, 1);
+  if (threads.length === 0) {
+    Logger.log('找不到符合條件的信用卡帳單信件。請確認 CREDIT_PDF_SEARCH_QUERY 設定。');
+    return;
+  }
+  var msg = threads[0].getMessages()[0];
+  Logger.log('寄件人：' + msg.getFrom());
+  Logger.log('主旨：'   + msg.getSubject());
+
+  var pdfs = msg.getAttachments({ includeInlineImages: false }).filter(function(a) {
+    return /TSB_Creditcard_Estatement/i.test(a.getName());
+  });
+  Logger.log('符合檔名的 PDF 附件數：' + pdfs.length);
+  pdfs.forEach(function(p) {
+    Logger.log('  - ' + p.getName() + ' (' + Math.round(p.getSize() / 1024) + ' KB)');
+  });
+  Logger.log('（此為預覽，尚未上傳至 Worker）');
+}
+
+/**
+ * 清除信用卡帳單已處理 ID 紀錄（用於重置）。
+ */
+function clearProcessedCreditPdfIds() {
+  PropertiesService.getScriptProperties().deleteProperty('processedCreditPdfIds');
+  Logger.log('✅ 已清除 processedCreditPdfIds，所有信用卡帳單信件將在下次執行時重新掃描。');
+}
