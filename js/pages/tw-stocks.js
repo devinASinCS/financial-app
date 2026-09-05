@@ -6,6 +6,7 @@ const PageTWStocks = (() => {
   let _activeTab = 'holdings';
   let _fetchingPrices = false;
   let _autoFetchDone  = false;
+  let _divViewMode = 'group'; // 'group' | 'date'
 
   function render() {
     document.getElementById('app-content').innerHTML = `
@@ -371,6 +372,42 @@ const PageTWStocks = (() => {
         <div style="text-align:right;font-size:12px;color:#9ca3af;">${divs.length} 筆 · ${grouped.length} 檔</div>
       </div>
 
+      <div style="display:flex;gap:6px;margin-bottom:12px;">
+        <button class="btn btn-sm ${_divViewMode === 'group' ? 'btn-primary' : 'btn-secondary'}" onclick="PageTWStocks.switchDivView('group')">依股票分組</button>
+        <button class="btn btn-sm ${_divViewMode === 'date' ? 'btn-primary' : 'btn-secondary'}" onclick="PageTWStocks.switchDivView('date')">依日期排序</button>
+      </div>
+
+      ${_divViewMode === 'date' ? _renderDividendsByDate(divs) : _renderDividendsByGroup(divs, grouped)}
+    `;
+  }
+
+  function _renderDividendsByDate(divs) {
+    const rows = divs.map(d => {
+      const exDate  = d.exDate || d.date;
+      const payDate = d.payDate;
+      return `
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #f1f5f9;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;color:#1d4ed8;">${d.symbol} <span style="font-weight:400;color:#6b7280;font-size:11px;">${d.name || ''}</span></div>
+          <div style="font-size:12px;font-weight:600;color:#374151;margin-top:2px;">除息 ${Utils.formatDate(exDate)}</div>
+          ${payDate && payDate !== exDate ? '<div style="font-size:11px;color:#6b7280;">發放 ' + Utils.formatDate(payDate) + '</div>' : ''}
+          ${d.note ? '<div style="font-size:11px;color:#94a3b8;">' + d.note + '</div>' : ''}
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          ${d.cashTotal > 0 ? '<div style="font-size:13px;font-weight:600;color:#8b5cf6;">' + Utils.formatTWD(d.cashTotal) + '</div>' : ''}
+          ${d.stockShares > 0 ? '<div style="font-size:11px;color:#3b82f6;">+' + d.stockShares + '股</div>' : ''}
+        </div>
+        <div style="display:flex;gap:2px;flex-shrink:0;">
+          <button onclick="event.stopPropagation();PageTWStocks.openEditDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-pen fa-xs"></i></button>
+          <button onclick="event.stopPropagation();PageTWStocks.delDividend('${d.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px;"><i class="fa-solid fa-trash fa-xs"></i></button>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div style="background:white;border-radius:14px;overflow:hidden;">${rows}</div>`;
+  }
+
+  function _renderDividendsByGroup(divs, grouped) {
+    return `
       ${grouped.map(g => {
         const symbolDivs = divs.filter(d => d.symbol === g.symbol);
         const detailRows = symbolDivs.map(d => {
@@ -517,6 +554,11 @@ const PageTWStocks = (() => {
     if (btn) btn.textContent = isOpen ? '▼' : '▲';
   }
 
+  function switchDivView(mode) {
+    _divViewMode = mode;
+    _renderDividends();
+  }
+
   function toggleDivGroup(symbol) {
     const detail = document.getElementById('div-detail-' + symbol);
     const arrow  = document.getElementById('div-arrow-' + symbol);
@@ -570,7 +612,7 @@ const PageTWStocks = (() => {
     openAddTrade, openEditTrade, delTrade,
     openAddDividend, openAddDividendFor, openEditDividend, delDividend,
     openImport,
-    toggleHoldingTrades, toggleTradeDetail, toggleDivGroup,
+    toggleHoldingTrades, toggleTradeDetail, toggleDivGroup, switchDivView,
     refreshPrices,
   };
 })();
